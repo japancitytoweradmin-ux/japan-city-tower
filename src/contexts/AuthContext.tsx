@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile } from '../types';
-import { sampleUsers } from '../data/mockData';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'error';
 
@@ -13,10 +12,24 @@ interface AuthContextType {
   clearError: () => void;
 }
 
+const STORAGE_KEY = 'jct_user_session';
+
+const getInitialUser = (): UserProfile | null => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    console.warn('Failed to parse saved user session:', e);
+  }
+  return null;
+};
+
 const defaultAuthContext: AuthContextType = {
-  userProfile: sampleUsers[0],
+  userProfile: null,
   setUserProfile: () => {},
-  status: 'authenticated',
+  status: 'unauthenticated',
   isLoading: false,
   error: null,
   clearError: () => {},
@@ -35,9 +48,25 @@ export const AuthProvider: React.FC<{
   loading = false,
   error = null
 }) => {
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(user !== undefined ? user : sampleUsers[0]);
+  const [userProfile, setUserProfileState] = useState<UserProfile | null>(() => {
+    if (user !== undefined) return user;
+    return getInitialUser();
+  });
   const [isLoading, setIsLoading] = useState<boolean>(loading);
   const [authError, setAuthError] = useState<string | null>(error);
+
+  const setUserProfile = (newUser: UserProfile | null) => {
+    setUserProfileState(newUser);
+    try {
+      if (newUser) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch (e) {
+      console.warn('LocalStorage save user error:', e);
+    }
+  };
 
   useEffect(() => {
     if (user !== undefined) {
@@ -84,4 +113,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
 

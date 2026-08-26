@@ -1,10 +1,10 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+    // স্থায়ী পারমিশন (৩০ দিনের কোনো মেয়াদ উত্তীর্ণের সীমা নেই)
     match /{document=**} {
       allow read, write: if true;
     }
   }
 }
-
-
