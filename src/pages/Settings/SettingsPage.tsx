@@ -27,7 +27,11 @@ import {
   Clock,
   MapPin,
   Mail,
-  X
+  X,
+  CloudLightning,
+  Globe,
+  HelpCircle,
+  Wifi
 } from 'lucide-react';
 import { PageHeader } from '../../components/common/PageHeader';
 import { useToast } from '../../components/common/Toast';
@@ -47,7 +51,16 @@ export const SettingsPage: React.FC = () => {
   const { showToast } = useToast();
 
   // Active Sub-Tab
-  const [activeTab, setActiveTab] = useState<'building' | 'billing' | 'receipt' | 'office' | 'security' | 'demo'>('building');
+  const [activeTab, setActiveTab] = useState<'building' | 'billing' | 'receipt' | 'office' | 'security' | 'demo' | 'firebase'>('building');
+
+  // Firebase Custom Sync States
+  const [firebaseApiKey, setFirebaseApiKey] = useState('');
+  const [firebaseProjectId, setFirebaseProjectId] = useState('');
+  const [firebaseAppId, setFirebaseAppId] = useState('');
+  const [firebaseAuthDomain, setFirebaseAuthDomain] = useState('');
+  const [firebaseAutoSync, setFirebaseAutoSync] = useState(true);
+  const [isTestingFirebase, setIsTestingFirebase] = useState(false);
+  const [showFirebaseInstructions, setShowFirebaseInstructions] = useState(false);
 
   // Password Change State
   const [newPassword, setNewPassword] = useState('');
@@ -149,6 +162,98 @@ export const SettingsPage: React.FC = () => {
       console.error('Error fetching summary:', err);
     } finally {
       setIsLoadingSummary(false);
+    }
+  };
+
+  // Load custom Firebase config on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const storedConfig = localStorage.getItem('jct_custom_firebase_config');
+        if (storedConfig) {
+          const parsed = JSON.parse(storedConfig);
+          setFirebaseApiKey(parsed.apiKey || '');
+          setFirebaseProjectId(parsed.projectId || '');
+          setFirebaseAppId(parsed.appId || '');
+          setFirebaseAuthDomain(parsed.authDomain || '');
+        }
+        
+        const storedAutoSync = localStorage.getItem('jct_firebase_auto_sync');
+        if (storedAutoSync !== null) {
+          setFirebaseAutoSync(storedAutoSync === 'true');
+        } else {
+          setFirebaseAutoSync(true); // default to true
+        }
+      } catch (e) {
+        console.error('Error loading custom firebase config:', e);
+      }
+    }
+  }, []);
+
+  const handleSaveFirebaseConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!firebaseApiKey || !firebaseProjectId || !firebaseAppId) {
+      showToast('অনুগ্রহ করে সব তারকা চিহ্নিত (*) প্রফিট ফিল্ড পূরণ করুন।', 'warning');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const config = {
+        apiKey: firebaseApiKey.trim(),
+        projectId: firebaseProjectId.trim(),
+        appId: firebaseAppId.trim(),
+        authDomain: firebaseAuthDomain.trim() || undefined
+      };
+      
+      localStorage.setItem('jct_custom_firebase_config', JSON.stringify(config));
+      localStorage.setItem('jct_firebase_auto_sync', firebaseAutoSync ? 'true' : 'false');
+      
+      showToast('ফায়ারবেস কনফিগারেশন সফলভাবে সংরক্ষিত হয়েছে! নতুন ডেটাবেজ সংযোগ কার্যকর করতে অ্যাপ্লিকেশনটি রিলোড হচ্ছে...', 'success');
+      
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    } catch (err) {
+      showToast('কনফিগারেশন সংরক্ষণে সমস্যা হয়েছে।', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleTestFirebaseConnection = async () => {
+    if (!firebaseApiKey || !firebaseProjectId || !firebaseAppId) {
+      showToast('পরীক্ষা করার জন্য অনুগ্রহ করে এপিআই কি, প্রজেক্ট আইডি এবং অ্যাপ আইডি দিন।', 'warning');
+      return;
+    }
+
+    setIsTestingFirebase(true);
+    try {
+      const { testFirebaseConnection } = await import('../../lib/firebase');
+      const success = await testFirebaseConnection({
+        apiKey: firebaseApiKey.trim(),
+        projectId: firebaseProjectId.trim(),
+        appId: firebaseAppId.trim(),
+        authDomain: firebaseAuthDomain.trim() || undefined
+      });
+      if (success) {
+        showToast('ফায়ারবেস কানেকশন সফল হয়েছে! ডেটাবেজের সাথে যোগাযোগ স্থাপন সম্ভব হয়েছে।', 'success');
+      }
+    } catch (err: any) {
+      console.error('Connection test error:', err);
+      showToast(`কানেকশন ব্যর্থ হয়েছে: ${err.message || err}`, 'error');
+    } finally {
+      setIsTestingFirebase(false);
+    }
+  };
+
+  const handleResetFirebaseConfig = () => {
+    if (window.confirm('আপনি কি নিশ্চিত যে আপনি ডিফল্ট ফায়ারবেস ডেটাবেজ কনফিগারেশনে ফিরে যেতে চান?')) {
+      localStorage.removeItem('jct_custom_firebase_config');
+      showToast('ডিফল্ট ফায়ারবেস ডেটাবেজ কনফিগারেশন সেট করা হয়েছে। অ্যাপ্লিকেশনটি রিলোড হচ্ছে...', 'info');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
     }
   };
 
@@ -399,6 +504,18 @@ export const SettingsPage: React.FC = () => {
         >
           <Database className="w-4 h-4" />
           <span>ডেটাবেজ ও ডেমো সুরক্ষা</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('firebase')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'firebase'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <CloudLightning className="w-4 h-4 text-sky-500" />
+          <span>ফায়ারবেস ক্লাউড সিঙ্ক</span>
         </button>
       </div>
 
@@ -1170,6 +1287,224 @@ export const SettingsPage: React.FC = () => {
                   <span>ডেমো ডাটা সিড করুন</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 7: FIREBASE CLOUD SYNC */}
+      {activeTab === 'firebase' && (
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-600">
+                  <CloudLightning className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">ফায়ারবেস ক্লাউড সিঙ্ক (Firebase Cloud Sync)</h3>
+                  <p className="text-xs text-slate-500">আপনার নিজস্ব ক্লাউড ডাটাবেজ ফায়ারবেসের সাথে যুক্ত করুন</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400 bg-sky-50/50 dark:bg-sky-950/20 p-4 rounded-2xl border border-sky-100/50 dark:border-sky-950/30">
+              আপনার <strong>জাপান সিটি টাওয়ার</strong> ম্যানেজমেন্ট সিস্টেমকে সম্পূর্ণ বিনামূল্যে ক্লাউড ফায়ারবেস ডাটাবেজের সাথে যুক্ত করে সম্পূর্ণ অনলাইন করুন। এর ফলে কোনো ডাটা হারানো বা মুছে যাওয়ার ভয় থাকবে না এবং একাধিক ডিভাইস (যেমন: পিছি ও মোবাইল) থেকে একসাথে রিয়াল-টাইম লাইভ ডাটা এন্ট্রি করতে পারবেন।
+            </p>
+
+            {/* AUTO-SYNC SETTING */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={firebaseAutoSync}
+                  onChange={(e) => setFirebaseAutoSync(e.target.checked)}
+                  className="mt-1 w-4.5 h-4.5 rounded border-slate-300 text-sky-500 focus:ring-sky-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-sm font-bold text-slate-800 dark:text-slate-200 block">
+                    অটোমেটিক ক্লাউড সিঙ্ক সক্রিয় করুন (Auto-Sync)
+                  </span>
+                  <span className="text-xs text-slate-500 block mt-0.5">
+                    এটি পিসি এবং মোবাইল উভয় ডিভাইসেই চালু রাখুন। সক্রিয় থাকলে যেকোনো নতুন ডাটা এন্ট্রি বা ডিলিট করার সাথে সাথে তা অন্য ডিভাইসেও লাইভ আপডেট হয়ে যাবে।
+                  </span>
+                </div>
+              </label>
+            </div>
+
+            {/* FIREBASE CONFIGURATION FORM */}
+            <form onSubmit={handleSaveFirebaseConfig} className="space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300">ফায়ারবেস কনফিগারেশন সেট করুন</h4>
+                <button
+                  type="button"
+                  onClick={() => setShowFirebaseInstructions(!showFirebaseInstructions)}
+                  className="text-xs font-bold text-sky-600 hover:text-sky-700 flex items-center gap-1 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>কিভাবে বের করবেন?</span>
+                </button>
+              </div>
+
+              {showFirebaseInstructions && (
+                <div className="p-4 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs space-y-2 text-slate-700 dark:text-slate-300">
+                  <span className="font-bold text-slate-900 dark:text-white block">কীভাবে ফায়ারবেস কনফিগারেশন বের করবেন?</span>
+                  <ol className="list-decimal list-inside space-y-1.5 pl-1 leading-relaxed">
+                    <li>প্রথমে <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:underline inline-flex items-center gap-0.5">Firebase Console <Globe className="w-3 h-3 inline" /></a>-এ গিয়ে জিমেইল দিয়ে লগইন করুন।</li>
+                    <li>একটি নতুন প্রজেক্ট (Create a project) তৈরি করুন (যেমন: <span className="font-mono">japan-city-tower-db</span>)।</li>
+                    <li>প্রজেক্ট সেটিংস (Project Settings - গিয়ার আইকন) এ গিয়ে নিচে <strong>Add App</strong> বাটনে ক্লিক করে <strong>Web (&lt;/&gt;)</strong> নির্বাচন করুন।</li>
+                    <li>যেকোনো একটি অ্যাপের নাম দিয়ে রেজিস্টার করলে সেখানে একটি <span className="font-mono">firebaseConfig</span> অবজেক্ট দেখতে পাবেন।</li>
+                    <li>সেখান থেকে হুবহু <strong>API Key</strong>, <strong>Project ID</strong> এবং <strong>App ID</strong> কপি করে নিচের নির্দিষ্ট ইনপুটে বসিয়ে দিন।</li>
+                    <li>এরপর ফায়ারবেস কনসোলের বাম পাশের মেনু থেকে <strong>Firestore Database</strong> তৈরি করুন এবং সিকিউরিটি রুলস **Start in Test Mode** (<span className="font-mono">allow read, write: if true;</span>) দিন যাতে যেকোনো মেম্বার তাদের ডাটা দেখতে পারে।</li>
+                  </ol>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Firebase API Key <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={firebaseApiKey}
+                    onChange={(e) => setFirebaseApiKey(e.target.value)}
+                    placeholder="AIzaSy..."
+                    required
+                    className="w-full px-3.5 py-2.5 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-hidden dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Project ID <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={firebaseProjectId}
+                    onChange={(e) => setFirebaseProjectId(e.target.value)}
+                    placeholder="japan-city-tower-db"
+                    required
+                    className="w-full px-3.5 py-2.5 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-hidden dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    App ID (Web) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={firebaseAppId}
+                    onChange={(e) => setFirebaseAppId(e.target.value)}
+                    placeholder="1:123456789:web:abcdef12345"
+                    required
+                    className="w-full px-3.5 py-2.5 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-hidden dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Auth Domain (ঐচ্ছিক)
+                  </label>
+                  <input
+                    type="text"
+                    value={firebaseAuthDomain}
+                    onChange={(e) => setFirebaseAuthDomain(e.target.value)}
+                    placeholder="japan-city-tower-db.firebaseapp.com"
+                    className="w-full px-3.5 py-2.5 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-hidden dark:text-white"
+                  />
+                </div>
+              </div>
+
+              {/* ACTION BUTTONS */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTestFirebaseConnection}
+                    disabled={isTestingFirebase}
+                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    {isTestingFirebase ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Wifi className="w-3.5 h-3.5 text-sky-500" />
+                    )}
+                    <span>কানেকশন টেস্ট করুন</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetFirebaseConfig}
+                    className="px-5 py-2.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-rose-500 hover:text-rose-600 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <span>ডিফল্ট কনফিগারেশনে ফিরে যান</span>
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs rounded-xl shadow-md shadow-sky-500/15 flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>কনফিগারেশন সংরক্ষণ করুন</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* DATABASE INITIALIZATION CARD */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
+            <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600">
+                <Database className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">১ম ধাপ: মাস্টার ডেটা আপলোড করুন (Master Data Upload)</h3>
+                <p className="text-xs text-slate-500">আপনার নতুন ক্লাউড ডাটাবেজে বিল্ডিংয়ের ফ্ল্যাট ও সদস্য তথ্য আপলোড করুন</p>
+              </div>
+            </div>
+
+            <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+              যেহেতু আপনি একটি সম্পূর্ণ নতুন ফায়ারবেস প্রজেক্ট যুক্ত করেছেন, তাই আপনার ফায়ারবেস কনসোল সম্পূর্ণ খালি রয়েছে (কোনো কালেকশন বা ডকুমেন্ট নেই)। এই পিসিতে বা অন্য কোনো মোবাইলে লাইভ ডাটা দেখতে হলে প্রথমে <strong>২৮টি ফ্ল্যাট ও ২৫জন সদস্যের মূল মাস্টার ডেটা</strong> আপনার ক্লাউড ডাটাবেজে আপলোড করতে হবে।
+            </p>
+
+            <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100/50 dark:border-emerald-950/30 flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                <span className="font-bold block text-slate-900 dark:text-white mb-0.5">কী কী ডেটা আপনার ক্লাউডে জমা হবে?</span>
+                <ul className="list-disc list-inside space-y-1 text-slate-600 dark:text-slate-400">
+                  <li><strong>২৮টি ফ্ল্যাট (Flats):</strong> 2-A থেকে 9-D পর্যন্ত প্রতিটি ফ্ল্যাটের বিবরণ ও নাম।</li>
+                  <li><strong>২৫জন সদস্য (Members):</strong> JCT-001 থেকে JCT-025 পর্যন্ত প্রতিটি ফ্ল্যাট মালিকের নাম, মোবাইল নম্বর এবং প্রারম্ভিক বকেয়া।</li>
+                  <li><strong>বিলিং নিয়মনীতি (System Settings):</strong> সার্ভিস চার্জ, পানির বিল, জেনারেটর ফি ও অন্যান্য মাসিক বিলিং সেটিংস।</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <div className="text-xs text-slate-500">
+                {summary ? (
+                  <span>ক্লাউডে বর্তমান তথ্য: <strong className="text-emerald-600 dark:text-emerald-400">{summary.masterFlatsCount} টি ফ্ল্যাট</strong> এবং <strong className="text-emerald-600 dark:text-emerald-400">{summary.masterMembersCount} জন সদস্য</strong>।</span>
+                ) : (
+                  <span>ডাটাবেজ কানেক্টেড আছে</span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSeedMasterData}
+                disabled={isSeedingMaster}
+                className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-500/15 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                {isSeedingMaster ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5" />
+                )}
+                <span>মাস্টার ডেটা ক্লাউডে আপলোড করুন</span>
+              </button>
             </div>
           </div>
         </div>

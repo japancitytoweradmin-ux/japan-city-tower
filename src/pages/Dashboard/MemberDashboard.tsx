@@ -51,7 +51,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
   const [members, setMembers] = useState<Member[]>(sampleMembers);
   const [flats, setFlats] = useState<FlatUnit[]>(sampleUnits);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [expenses, setExpenses] = useState<ExpenseItem[]>(sampleExpensesJune2025);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
 
@@ -77,7 +77,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
     );
 
     const unsubExpenses = expenseService.subscribeToExpenses((loadedExp) => {
-      setExpenses(loadedExp.length > 0 ? loadedExp : sampleExpensesJune2025);
+      setExpenses(loadedExp.length > 0 ? loadedExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []));
     }, billingPeriodId);
 
     const unsubNotices = noticeService.subscribeToPublishedNotices((loaded) => setNotices(loaded));
@@ -108,7 +108,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
   const totalUnits = memberFlats.length || member.flatUnitNumbers?.length || 1;
   const isKh = isKhalilurMember(member.memberId);
   const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
-  const effectiveExp = periodExp.length > 0 ? periodExp : sampleExpensesJune2025;
+  const effectiveExp = periodExp.length > 0 ? periodExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
   const dualCalc = calculateDualBilling(effectiveExp, flats.length || 28);
 
   const totalBill = isKh 

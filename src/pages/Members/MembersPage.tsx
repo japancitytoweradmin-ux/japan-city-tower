@@ -49,7 +49,7 @@ export const MembersPage: React.FC<MembersPageProps> = ({ onNavigateTab }) => {
   const [members, setMembers] = useState<Member[]>(sampleMembers);
   const [flats, setFlats] = useState<FlatUnit[]>(sampleUnits);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [expenses, setExpenses] = useState<ExpenseItem[]>(sampleExpensesJune2025);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<string>('ALL');
@@ -103,7 +103,7 @@ export const MembersPage: React.FC<MembersPageProps> = ({ onNavigateTab }) => {
     }, billingPeriodId);
 
     const unsubscribeExpenses = expenseService.subscribeToExpenses((loadedExp) => {
-      setExpenses(loadedExp.length > 0 ? loadedExp : sampleExpensesJune2025);
+      setExpenses(loadedExp.length > 0 ? loadedExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []));
     }, billingPeriodId);
 
     return () => {
@@ -121,7 +121,7 @@ export const MembersPage: React.FC<MembersPageProps> = ({ onNavigateTab }) => {
 
     const isKh = isKhalilurMember(member.memberId);
     const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
-    const effectiveExp = periodExp.length > 0 ? periodExp : sampleExpensesJune2025;
+    const effectiveExp = periodExp.length > 0 ? periodExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
     const dualCalc = calculateDualBilling(effectiveExp, flats.length || 28);
 
     const monthlyBill = isKh 

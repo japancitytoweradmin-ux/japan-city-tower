@@ -233,6 +233,7 @@ export const demoDataService = {
     deletedCount: number;
     breakdown: { expenses: number; bills: number; payments: number; receipts: number; notices: number; vouchers: number; }
   }> => {
+    console.log('Starting clearDemoTransactionalData...');
     try {
       if (typeof window !== 'undefined') {
         localStorage.setItem('jct_demo_cleared', 'true');
@@ -264,10 +265,12 @@ export const demoDataService = {
 
       for (const col of collectionsToCheck) {
         try {
+          console.log(`Clearing collection: ${col.name}`);
           const snapshot = await getDocs(collection(db, col.name));
 
           if (!snapshot.empty) {
             const batch = writeBatch(db);
+            let batchCount = 0;
             snapshot.docs.forEach((docSnap) => {
               const data = docSnap.data();
               // Allow deleting monthlyBills even if they were marked as isMasterData (e.g. from the bills creation page)
@@ -277,12 +280,17 @@ export const demoDataService = {
                 breakdown.vouchers++;
               }
               batch.delete(docSnap.ref);
+              batchCount++;
               if (col.key in breakdown) {
                 breakdown[col.key as keyof typeof breakdown]++;
               }
               totalDeleted++;
             });
-            await batch.commit();
+            
+            if (batchCount > 0) {
+              console.log(`Committing batch for ${col.name} with ${batchCount} deletes...`);
+              await batch.commit();
+            }
           }
         } catch (colErr) {
           console.warn(`Error clearing collection ${col.name}:`, colErr);
@@ -291,9 +299,11 @@ export const demoDataService = {
 
       // Reset flat balances to 0
       try {
+        console.log('Resetting flat balances...');
         const flatsSnap = await getDocs(collection(db, 'flats'));
         if (!flatsSnap.empty) {
           const flatBatch = writeBatch(db);
+          let flatCount = 0;
           flatsSnap.docs.forEach(fDoc => {
             flatBatch.update(fDoc.ref, {
               currentPaid: 0,
@@ -301,8 +311,11 @@ export const demoDataService = {
               paymentStatus: 'DUE',
               updatedAt: new Date().toISOString()
             });
+            flatCount++;
           });
-          await flatBatch.commit();
+          if (flatCount > 0) {
+            await flatBatch.commit();
+          }
         }
       } catch (fErr) {
         console.warn('Reset flats error during demo clear:', fErr);
@@ -310,17 +323,22 @@ export const demoDataService = {
 
       // Reset members total paid/due
       try {
+        console.log('Resetting members paid/due sums...');
         const membersSnap = await getDocs(collection(db, 'members'));
         if (!membersSnap.empty) {
           const memBatch = writeBatch(db);
+          let memCount = 0;
           membersSnap.docs.forEach(mDoc => {
             memBatch.update(mDoc.ref, {
               totalPaid: 0,
               totalDue: 0,
               updatedAt: new Date().toISOString()
             });
+            memCount++;
           });
-          await memBatch.commit();
+          if (memCount > 0) {
+            await memBatch.commit();
+          }
         }
       } catch (mErr) {
         console.warn('Reset members error during demo clear:', mErr);
@@ -331,16 +349,22 @@ export const demoDataService = {
         breakdown.vouchers = sampleExpensesJune2025.filter(e => !!e.voucher).length;
       }
 
-      await auditService.logAction(
-        'DELETE',
-        'SETTINGS',
-        `CLEAR_DEMO_DATA: ${actorName} দ্বারা মোট ${totalDeleted}টি ডেমো রেকর্ড মুছে ফেলা হয়েছে। ফ্ল্যাট ও সদস্যদের মোবাইল নম্বর ও নাম সুরক্ষিত রেখে সব লেনদেন পরিষ্কার করা হয়েছে।`,
-        'usr-admin',
-        actorName,
-        'demo-clear',
-        'ADMIN'
-      );
+      console.log('Writing audit log...');
+      try {
+        await auditService.logAction(
+          'DELETE',
+          'SETTINGS',
+          `CLEAR_DEMO_DATA: ${actorName} দ্বারা মোট ${totalDeleted}টি ডেমো রেকর্ড মুছে ফেলা হয়েছে। ফ্ল্যাট ও সদস্যদের মোবাইল নম্বর ও নাম সুরক্ষিত রেখে সব লেনদেন পরিষ্কার করা হয়েছে।`,
+          'usr-admin',
+          actorName,
+          'demo-clear',
+          'ADMIN'
+        );
+      } catch (auditErr) {
+        console.warn('Failed to log clear demo audit action:', auditErr);
+      }
 
+      console.log('Clearing completed successfully, totalDeleted:', totalDeleted);
       return { deletedCount: totalDeleted, breakdown };
     } catch (error) {
       console.error('Error clearing demo data:', error);

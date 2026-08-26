@@ -30,12 +30,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [loginMode, setLoginMode] = useState<'MEMBER' | 'ADMIN'>('MEMBER');
 
   // Member Login States
-  const [flatOrMemberId, setFlatOrMemberId] = useState('6-B');
-  const [memberPhone, setMemberPhone] = useState('01819-223344');
+  const [flatOrMemberId, setFlatOrMemberId] = useState('');
+  const [memberPhone, setMemberPhone] = useState('');
 
   // Admin Login States
-  const [adminEmail, setAdminEmail] = useState('admin@japancitytower.com');
-  const [adminPassword, setAdminPassword] = useState('admin123456');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
 
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);

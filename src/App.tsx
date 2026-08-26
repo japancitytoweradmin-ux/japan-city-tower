@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ToastProvider, useToast } from './components/common/Toast';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { BillingPeriodProvider } from './contexts/BillingPeriodContext';
@@ -35,6 +35,7 @@ import { PaymentReceiptModal } from './components/receipts/PaymentReceiptModal';
 import { UserProfile, PaymentRecord } from './types';
 import { sampleUsers, sampleExpensesJune2025 } from './data/mockData';
 import { Loader2, Building2 } from 'lucide-react';
+import { demoDataService } from './services/demoDataService';
 
 function AppContent() {
   const { showToast } = useToast();
@@ -45,6 +46,13 @@ function AppContent() {
 
   // Global Modal States
   const [viewingReceipt, setViewingReceipt] = useState<PaymentRecord | null>(null);
+
+  // Auto-initialize master database if it's fresh/empty
+  useEffect(() => {
+    if (userProfile) {
+      demoDataService.initializeDatabaseIfEmpty();
+    }
+  }, [userProfile]);
 
   // Missing vouchers count
   const missingVouchersCount = sampleExpensesJune2025.filter((e) => !e.voucher).length;
