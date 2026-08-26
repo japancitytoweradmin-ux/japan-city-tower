@@ -1,0 +1,1259 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Settings, 
+  Building2, 
+  FileCheck, 
+  MessageSquare, 
+  Send, 
+  ShieldCheck, 
+  Save, 
+  Sparkles,
+  HardDrive,
+  Database,
+  Trash2,
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle2,
+  ShieldAlert,
+  FileText,
+  Users,
+  Layers,
+  Upload,
+  Image as ImageIcon,
+  Calendar,
+  DollarSign,
+  Receipt,
+  PhoneCall,
+  Clock,
+  MapPin,
+  Mail,
+  X
+} from 'lucide-react';
+import { PageHeader } from '../../components/common/PageHeader';
+import { useToast } from '../../components/common/Toast';
+import { demoDataService } from '../../services/demoDataService';
+import { buildingSettingsService } from '../../services/buildingSettingsService';
+import { storageService } from '../../services/storageService';
+import { authService } from '../../services/authService';
+import { 
+  DemoDataSummary, 
+  BuildingInfoSettings, 
+  SystemBillingSettings, 
+  ReceiptConfigSettings, 
+  OfficeConfigSettings 
+} from '../../types';
+
+export const SettingsPage: React.FC = () => {
+  const { showToast } = useToast();
+
+  // Active Sub-Tab
+  const [activeTab, setActiveTab] = useState<'building' | 'billing' | 'receipt' | 'office' | 'security' | 'demo'>('building');
+
+  // Password Change State
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Loading States
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+  // Form States - Building Info
+  const [buildingInfo, setBuildingInfo] = useState<BuildingInfoSettings>({
+    buildingNameBangla: 'জাপান সিটি টাওয়ার',
+    buildingNameEnglish: 'Japan City Tower',
+    addressBangla: 'প্লট নং ২৪/বি, রিং রোড, শ্যামলী, ঢাকা-১২০৭',
+    addressEnglish: 'Plot # 24/B, Ring Road, Shyamoli, Dhaka-1207',
+    buildingCode: 'JCT-01',
+    totalFloors: 9,
+    totalFlats: 28,
+    managementOfficeMobile: '+880 1711-000000',
+    managementOfficeEmail: 'info@japancitytower.com',
+    emergencyContact: '+880 1800-000000',
+    logoUrl: ''
+  });
+
+  // Form States - System Billing
+  const [billingSettings, setBillingSettings] = useState<SystemBillingSettings>({
+    startYear: 2026,
+    endYear: 2035,
+    defaultMonthlyBill: 1997,
+    billDueDate: 10,
+    currency: '৳',
+    roundingMethod: 'NEAREST_INTEGER'
+  });
+
+  // Form States - Receipt Config
+  const [receiptSettings, setReceiptSettings] = useState<ReceiptConfigSettings>({
+    receiptPrefix: 'JCT-',
+    receiptFormat: 'JCT-YYYY-XXXXXX',
+    startingNumber: 1001,
+    receiptHeader: 'জাপান সিটি টাওয়ার – সাধারণ বিল মানি রসিদ',
+    footerText: 'ধন্যবাদান্তে, জাপান সিটি টাওয়ার ফ্ল্যাট মালিক ব্যবস্থাপনা সমিতি।'
+  });
+
+  // Form States - Office Config
+  const [officeSettings, setOfficeSettings] = useState<OfficeConfigSettings>({
+    officeName: 'জাপান সিটি টাওয়ার ফ্ল্যাট মালিক সমিতি কার্যালয়',
+    phone: '+880 2-9110000',
+    mobile: '+880 1711-000000',
+    email: 'info@japancitytower.com',
+    address: 'গ্রাউন্ড ফ্লোর, প্লট ২৪/বি, রিং রোড, শ্যামলী, ঢাকা-১২০৭',
+    officeHours: 'সকাল ৯:০০ - রাত ৮:০০ (প্রতিদিন)',
+    emergencyContact: '+880 1800-000000'
+  });
+
+  // Demo Data States
+  const [summary, setSummary] = useState<DemoDataSummary | null>(null);
+  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  const [isClearingDemo, setIsClearingDemo] = useState(false);
+  const [isSeedingDemo, setIsSeedingDemo] = useState(false);
+  const [isSeedingMaster, setIsSeedingMaster] = useState(false);
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
+  const [clearDemoConfirmText, setClearDemoConfirmText] = useState('');
+
+  // Load Settings from Firestore
+  useEffect(() => {
+    const fetchAllSettings = async () => {
+      setIsInitialLoading(true);
+      try {
+        const [bInfo, bBill, rConf, oConf, dSum] = await Promise.all([
+          buildingSettingsService.getBuildingInfo(),
+          buildingSettingsService.getSystemBilling(),
+          buildingSettingsService.getReceiptConfig(),
+          buildingSettingsService.getOfficeConfig(),
+          demoDataService.getDemoDataSummary()
+        ]);
+        setBuildingInfo(bInfo);
+        setBillingSettings(bBill);
+        setReceiptSettings(rConf);
+        setOfficeSettings(oConf);
+        setSummary(dSum);
+      } catch (error) {
+        console.error('Error loading system settings:', error);
+      } finally {
+        setIsInitialLoading(false);
+      }
+    };
+
+    fetchAllSettings();
+  }, []);
+
+  const loadSummary = async () => {
+    setIsLoadingSummary(true);
+    try {
+      const data = await demoDataService.getDemoDataSummary();
+      setSummary(data);
+    } catch (err) {
+      console.error('Error fetching summary:', err);
+    } finally {
+      setIsLoadingSummary(false);
+    }
+  };
+
+  // Logo Upload Handler
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('লোগো ফাইলের সাইজ সর্বোচ্চ ৫ মেগাবাইটের বেশি হতে পারবে না', 'warning');
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      const downloadUrl = await storageService.uploadLogoFile(file);
+      const updatedInfo = { ...buildingInfo, logoUrl: downloadUrl };
+      setBuildingInfo(updatedInfo);
+      await buildingSettingsService.updateBuildingInfo(updatedInfo);
+      showToast('বিল্ডিং লোগো সফলভাবে আপলোড ও আপডেট করা হয়েছে', 'success');
+    } catch (err) {
+      console.error('Logo upload error:', err);
+      showToast('লোগো আপলোডে সমস্যা হয়েছে', 'error');
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  // Remove Logo
+  const handleRemoveLogo = async () => {
+    try {
+      const updatedInfo = { ...buildingInfo, logoUrl: '' };
+      setBuildingInfo(updatedInfo);
+      await buildingSettingsService.updateBuildingInfo(updatedInfo);
+      showToast('বিল্ডিং লোগো সফলভাবে অপসারণ করা হয়েছে', 'info');
+    } catch (err) {
+      showToast('লোগো অপসারণে সমস্যা হয়েছে', 'error');
+    }
+  };
+
+  // Save Handlers
+  const handleSaveBuildingInfo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      await buildingSettingsService.updateBuildingInfo(buildingInfo);
+      showToast('বিল্ডিং তথ্য ও পরিচিতি সফলভাবে সংরক্ষিত হয়েছে', 'success');
+    } catch (err) {
+      showToast('তথ্য সংরক্ষণে সমস্যা হয়েছে', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveBillingSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      await buildingSettingsService.updateSystemBilling(billingSettings);
+      showToast('বিলিং নিয়মাবলি ও সেটিংস সফলভাবে সংরক্ষিত হয়েছে', 'success');
+    } catch (err) {
+      showToast('বিলিং সেটিংস সংরক্ষণে সমস্যা হয়েছে', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveReceiptSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      await buildingSettingsService.updateReceiptConfig(receiptSettings);
+      showToast('মানি রসিদ কনফিগারেশন সফলভাবে সংরক্ষিত হয়েছে', 'success');
+    } catch (err) {
+      showToast('রসিদ সেটিংস সংরক্ষণে সমস্যা হয়েছে', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveOfficeSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      await buildingSettingsService.updateOfficeConfig(officeSettings);
+      showToast('অফিস ঠিকানা ও যোগাযোগের তথ্য সফলভাবে সংরক্ষিত হয়েছে', 'success');
+    } catch (err) {
+      showToast('অফিস তথ্য সংরক্ষণে সমস্যা হয়েছে', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      showToast('নতুন পাসওয়ার্ড ও কনফার্ম পাসওয়ার্ড মিলছে না', 'error');
+      return;
+    }
+    if (newPassword.length < 6) {
+      showToast('পাসওয়ার্ড ন্যূনতম ৬ অক্ষরের হতে হবে', 'warning');
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      await authService.changePassword(newPassword);
+      showToast('পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!', 'success');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      showToast('পাসওয়ার্ড পরিবর্তনে ব্যর্থ: ' + (err.message || 'Error'), 'error');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  // Safe Demo Clear Function with typed confirmation
+  const handleClearDemoData = async () => {
+    if (clearDemoConfirmText.trim() !== 'CLEAR DEMO') {
+      showToast('অনুগ্রহ করে নিশ্চিত করতে "CLEAR DEMO" টাইপ করুন', 'warning');
+      return;
+    }
+
+    setIsClearingDemo(true);
+    try {
+      const result = await demoDataService.clearDemoTransactionalData('Admin');
+      showToast(`ডেমো লেনদেন সফলভাবে মুছে ফেলা হয়েছে! (${result.deletedCount}টি রেকর্ড অপসারিত)`, 'success');
+      setShowClearConfirmModal(false);
+      setClearDemoConfirmText('');
+      await loadSummary();
+      setTimeout(() => {
+        window.location.reload();
+      }, 800);
+    } catch (err: any) {
+      showToast('ডেমো ডেটা পরিষ্কারে সমস্যা হয়েছে: ' + (err.message || 'Error'), 'error');
+    } finally {
+      setIsClearingDemo(false);
+    }
+  };
+
+  // Re-seed Demo Data Function
+  const handleSeedDemoData = async () => {
+    setIsSeedingDemo(true);
+    try {
+      await demoDataService.seedDemoTransactions();
+      showToast('ডেমো লেনদেন ও ডাটা সফলভাবে সিড করা হয়েছে', 'success');
+      await loadSummary();
+      setTimeout(() => {
+        window.location.reload();
+      }, 800);
+    } catch (err: any) {
+      showToast('ডেমো ডাটা সিডিংয়ে সমস্যা হয়েছে: ' + (err.message || 'Error'), 'error');
+    } finally {
+      setIsSeedingDemo(false);
+    }
+  };
+
+  // Re-seed Master Data Function
+  const handleSeedMasterData = async () => {
+    setIsSeedingMaster(true);
+    try {
+      await demoDataService.seedMasterData();
+      showToast('২৮টি ফ্ল্যাট ও সদস্য মাস্টার ডাটা ক্লাউডে সিঙ্ক করা হয়েছে', 'success');
+      await loadSummary();
+    } catch (err: any) {
+      showToast('মাস্টার ডাটা সিঙ্কে সমস্যা হয়েছে: ' + (err.message || 'Error'), 'error');
+    } finally {
+      setIsSeedingMaster(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 font-bengali">
+      <PageHeader
+        title="সিস্টেম ও বিল্ডিং মাস্টার সেটিংস"
+        subtitle="বিল্ডিং তথ্য, লোগো ব্যবস্থাপনা, ২০২৬–২০৩৫ বিলিং সেটিংস, রসিদ ফরম্যাট ও ডেটাবেজ কনফিগারেশন"
+      />
+
+      {/* Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 overflow-x-auto pb-2 scrollbar-none">
+        <button
+          onClick={() => setActiveTab('building')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'building'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>বিল্ডিং তথ্য ও লোগো</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('billing')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'billing'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          <span>বিল্ডিং ও বিলিং সেটিংস</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('receipt')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'receipt'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <Receipt className="w-4 h-4" />
+          <span>মানি রসিদ সেটিংস</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('office')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'office'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <PhoneCall className="w-4 h-4" />
+          <span>অফিস তথ্য</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('security')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'security'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>পাসওয়ার্ড ও সিকিউরিটি</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('demo')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'demo'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <Database className="w-4 h-4" />
+          <span>ডেটাবেজ ও ডেমো সুরক্ষা</span>
+        </button>
+      </div>
+
+      {/* TAB 1: BUILDING INFO & LOGO */}
+      {activeTab === 'building' && (
+        <form onSubmit={handleSaveBuildingInfo} className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">বিল্ডিং তথ্য ও লোগো ব্যবস্থাপনা</h3>
+                  <p className="text-xs text-slate-500">টাওয়ারের নাম, ঠিকানা, লোগো ও সাধারণ কনফিগারেশন</p>
+                </div>
+              </div>
+            </div>
+
+            {/* LOGO UPLOAD SECTION */}
+            <div className="p-5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                বিল্ডিং লোগো (Logo Image)
+              </label>
+
+              <div className="flex flex-col sm:flex-row items-center gap-5">
+                <div className="w-24 h-24 rounded-2xl bg-white dark:bg-slate-900 border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center overflow-hidden shrink-0 shadow-sm relative">
+                  {buildingInfo.logoUrl ? (
+                    <img 
+                      src={buildingInfo.logoUrl} 
+                      alt="Building Logo" 
+                      className="w-full h-full object-contain p-1"
+                    />
+                  ) : (
+                    <div className="text-center p-2 text-slate-400">
+                      <Building2 className="w-8 h-8 mx-auto mb-1 text-slate-400" />
+                      <span className="text-[10px] block font-bold">নো লোগো</span>
+                    </div>
+                  )}
+                  {isUploadingLogo && (
+                    <div className="absolute inset-0 bg-slate-950/70 flex items-center justify-center text-amber-400">
+                      <RefreshCw className="w-6 h-6 animate-spin" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2 text-center sm:text-left flex-1">
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                    <label className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl cursor-pointer flex items-center gap-1.5 shadow-sm transition-all">
+                      <Upload className="w-4 h-4" />
+                      <span>{buildingInfo.logoUrl ? 'লোগো পরিবর্তন করুন' : 'লোগো আপলোড করুন'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        disabled={isUploadingLogo}
+                        className="hidden"
+                      />
+                    </label>
+
+                    {buildingInfo.logoUrl && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveLogo}
+                        className="px-3 py-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 font-semibold text-xs rounded-xl border border-rose-200 dark:border-rose-800 flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                        <span>অপসারণ</span>
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    সমর্থিত ফরম্যাট: PNG, JPG, WebP। সর্বোচ্চ ফাইল সাইজ: ৫ মেগাবাইট। লোগোটি রসিদ ও রিপোর্টে প্রদর্শিত হবে।
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* FORM FIELDS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  টাওয়ারের নাম (বাংলা) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={buildingInfo.buildingNameBangla}
+                  onChange={(e) => setBuildingInfo({ ...buildingInfo, buildingNameBangla: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Building Name (English) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={buildingInfo.buildingNameEnglish}
+                  onChange={(e) => setBuildingInfo({ ...buildingInfo, buildingNameEnglish: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-sans bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  ঠিকানা (বাংলা) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={buildingInfo.addressBangla}
+                  onChange={(e) => setBuildingInfo({ ...buildingInfo, addressBangla: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Address (English)
+                </label>
+                <input
+                  type="text"
+                  value={buildingInfo.addressEnglish}
+                  onChange={(e) => setBuildingInfo({ ...buildingInfo, addressEnglish: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-sans bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  বিল্ডিং কোড (Building Code)
+                </label>
+                <input
+                  type="text"
+                  value={buildingInfo.buildingCode}
+                  onChange={(e) => setBuildingInfo({ ...buildingInfo, buildingCode: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  জরুরি কন্টাক্ট নম্বর
+                </label>
+                <input
+                  type="text"
+                  value={buildingInfo.emergencyContact}
+                  onChange={(e) => setBuildingInfo({ ...buildingInfo, emergencyContact: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-sans bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  মোট ফ্লোর সংখ্যা
+                </label>
+                <input
+                  type="number"
+                  value={buildingInfo.totalFloors}
+                  onChange={(e) => setBuildingInfo({ ...buildingInfo, totalFloors: parseInt(e.target.value) || 9 })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  মোট ফ্ল্যাট সংখ্যা (স্থায়ী মাস্টার ফ্ল্যাট)
+                </label>
+                <input
+                  type="number"
+                  value={buildingInfo.totalFlats}
+                  onChange={(e) => setBuildingInfo({ ...buildingInfo, totalFlats: parseInt(e.target.value) || 28 })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
+              >
+                {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>বিল্ডিং তথ্য সংরক্ষণ করুন</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
+      {/* TAB 2: SYSTEM BILLING SETTINGS */}
+      {activeTab === 'billing' && (
+        <form onSubmit={handleSaveBillingSettings} className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">সিস্টেম ও বিলিং নিয়মাবলি (2026–2035)</h3>
+                  <p className="text-xs text-slate-500">বিলিং মেয়াদকাল, ডিফল্ট মাসিক বিল ও ডিউ ডেট সেটিংস</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  বিলিং শুরুর বছর (Start Year)
+                </label>
+                <input
+                  type="number"
+                  min="2026"
+                  max="2035"
+                  value={billingSettings.startYear}
+                  onChange={(e) => setBillingSettings({ ...billingSettings, startYear: parseInt(e.target.value) || 2026 })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  বিলিং সমাপ্তির বছর (End Year)
+                </label>
+                <input
+                  type="number"
+                  min="2026"
+                  max="2035"
+                  value={billingSettings.endYear}
+                  onChange={(e) => setBillingSettings({ ...billingSettings, endYear: parseInt(e.target.value) || 2035 })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  ডিফল্ট মাসিক কমন বিল (প্রতি ফ্ল্যাট)
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={billingSettings.defaultMonthlyBill}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setBillingSettings({ ...billingSettings, defaultMonthlyBill: isNaN(val) ? 0 : val });
+                    }}
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white font-bold"
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-slate-500">
+                    টাকা
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  মাসিক বিল পরিশোধের শেষ তারিখ (তারিখ/দিন)
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="1"
+                    max="28"
+                    value={billingSettings.billDueDate}
+                    onChange={(e) => setBillingSettings({ ...billingSettings, billDueDate: parseInt(e.target.value) || 10 })}
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-slate-500">
+                    তারিখ (প্রতি মাস)
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  মুদ্রার প্রতীক (Currency Symbol)
+                </label>
+                <input
+                  type="text"
+                  value={billingSettings.currency}
+                  onChange={(e) => setBillingSettings({ ...billingSettings, currency: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-bold bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  হিসাব রাউন্ডিং মেথড (Rounding Method)
+                </label>
+                <select
+                  value={billingSettings.roundingMethod}
+                  onChange={(e) => setBillingSettings({ ...billingSettings, roundingMethod: e.target.value as any })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                >
+                  <option value="NEAREST_INTEGER">নিকটতম পূর্ণসংখ্যা (Nearest Integer)</option>
+                  <option value="EXACT_DECIMAL">যথাযথ দশমিক (Exact Decimal)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-800 dark:text-amber-300">
+              <p className="font-bold mb-1">ℹ বিলিং মেয়াদকাল সংক্রান্ত তথ্য:</p>
+              <p>
+                সিস্টেমটি ২০২৬ থেকে ২০৩৫ সাল পর্যন্ত পূর্ণাঙ্গ আর্থিক হিসাব ও রসিদ ট্র্যাকিং সমর্থন করার জন্য কনফিগার করা রয়েছে।
+              </p>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
+              >
+                {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>বিলিং সেটিংস সংরক্ষণ করুন</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
+      {/* TAB 3: RECEIPT CONFIG */}
+      {activeTab === 'receipt' && (
+        <form onSubmit={handleSaveReceiptSettings} className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">মানি রসিদ ফরম্যাট ও ডিজাইন সেটিংস</h3>
+                  <p className="text-xs text-slate-500">রসিদ নম্বর ফরম্যাট, প্রেফিক্স, হেডার ও ফুটনোট কনফিগারেশন</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  রসিদ প্রেফিক্স (Receipt Prefix)
+                </label>
+                <input
+                  type="text"
+                  value={receiptSettings.receiptPrefix}
+                  onChange={(e) => setReceiptSettings({ ...receiptSettings, receiptPrefix: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  প্রাথমিক রসিদ নম্বর (Starting Sequence Number)
+                </label>
+                <input
+                  type="number"
+                  value={receiptSettings.startingNumber}
+                  onChange={(e) => setReceiptSettings({ ...receiptSettings, startingNumber: parseInt(e.target.value) || 1001 })}
+                  className="w-full px-3.5 py-2.5 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  রসিদ হেডার শিরোনাম (Receipt Header Title)
+                </label>
+                <input
+                  type="text"
+                  value={receiptSettings.receiptHeader}
+                  onChange={(e) => setReceiptSettings({ ...receiptSettings, receiptHeader: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  রসিদ ফুটনোট / ধন্যবাদ বার্তা (Footer Note)
+                </label>
+                <textarea
+                  rows={2}
+                  value={receiptSettings.footerText}
+                  onChange={(e) => setReceiptSettings({ ...receiptSettings, footerText: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+            </div>
+
+            {/* PREVIEW BOX */}
+            <div className="p-4 bg-slate-100 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+              <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block">
+                রসিদ ফরম্যাট প্রিভিউ (Sample Preview):
+              </span>
+              <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 font-mono text-xs space-y-1 text-slate-800 dark:text-slate-200">
+                <p className="font-bold text-amber-500">{receiptSettings.receiptHeader}</p>
+                <p className="text-slate-500">রসিদ নম্বর: <span className="text-emerald-500 font-bold">{receiptSettings.receiptPrefix}2026-001001</span></p>
+                <p className="text-[11px] text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  {receiptSettings.footerText}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
+              >
+                {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>রসিদ সেটিংস সংরক্ষণ করুন</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
+      {/* TAB 4: OFFICE CONTACT INFO */}
+      {activeTab === 'office' && (
+        <form onSubmit={handleSaveOfficeSettings} className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
+                  <PhoneCall className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">ব্যবস্থাপনা সমিতি কার্যালয় তথ্য</h3>
+                  <p className="text-xs text-slate-500">অফিস মোবাইল, টেলিফোন, সময়সূচী ও জরুরি যোগাযোগ নম্বর</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  কার্যালয়ের নাম (Office Name)
+                </label>
+                <input
+                  type="text"
+                  value={officeSettings.officeName}
+                  onChange={(e) => setOfficeSettings({ ...officeSettings, officeName: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  অফিস মোবাইল নম্বর
+                </label>
+                <input
+                  type="text"
+                  value={officeSettings.mobile}
+                  onChange={(e) => setOfficeSettings({ ...officeSettings, mobile: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-sans bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  অফিস টেলিফোন
+                </label>
+                <input
+                  type="text"
+                  value={officeSettings.phone}
+                  onChange={(e) => setOfficeSettings({ ...officeSettings, phone: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-sans bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  অফিস ইমেইল
+                </label>
+                <input
+                  type="email"
+                  value={officeSettings.email}
+                  onChange={(e) => setOfficeSettings({ ...officeSettings, email: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-sans bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  অফিস সময়সূচী (Office Hours)
+                </label>
+                <input
+                  type="text"
+                  value={officeSettings.officeHours}
+                  onChange={(e) => setOfficeSettings({ ...officeSettings, officeHours: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  জরুরি যোগাযোগ (Emergency Contact)
+                </label>
+                <input
+                  type="text"
+                  value={officeSettings.emergencyContact}
+                  onChange={(e) => setOfficeSettings({ ...officeSettings, emergencyContact: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-sans bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  অফিসের পূর্ণাঙ্গ ঠিকানা
+                </label>
+                <input
+                  type="text"
+                  value={officeSettings.address}
+                  onChange={(e) => setOfficeSettings({ ...officeSettings, address: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
+              >
+                {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>অফিস তথ্য সংরক্ষণ করুন</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
+      {/* TAB 5: SECURITY & PASSWORD CHANGE */}
+      {activeTab === 'security' && (
+        <form onSubmit={handleChangePassword} className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">পাসওয়ার্ড ও সিকিউরিটি পরিবর্তন</h3>
+                  <p className="text-xs text-slate-500">আপনার অ্যাডমিন অ্যাকাউন্টের পাসওয়ার্ড পরিবর্তন করুন</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="max-w-md space-y-4 text-xs">
+              <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-start gap-3 text-slate-600 dark:text-slate-300">
+                <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                <p>নতুন পাসওয়ার্ড সেভ করার সাথে সাথে ফায়ারবেস সিকিউরিটিতে পাসওয়ার্ড আপডেট হয়ে যাবে। পরবর্তী লগইনে নতুন পাসওয়ার্ড ব্যবহার করতে হবে।</p>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  নতুন পাসওয়ার্ড (New Password) *
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="সর্বনিম্ন ৬ অক্ষরের নতুন পাসওয়ার্ড"
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  পাসওয়ার্ড নিশ্চিত করুন (Confirm Password) *
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="নতুন পাসওয়ার্ডটি পুনরায় দিন"
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden dark:text-white"
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={isChangingPassword}
+                  className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isChangingPassword ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>পাসওয়ার্ড পরিবর্তন করুন</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      )}
+
+      {/* TAB 5: DEMO & DATA PROTECTION */}
+      {activeTab === 'demo' && (
+        <div className="bg-slate-900 text-white rounded-3xl border border-slate-800 p-6 shadow-xl space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                <Database className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-white">ডেমো ও মাস্টার ডেটা নিরাপত্তা কেন্দ্র</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Firestore Active
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  ২৮টি ফ্ল্যাট ও স্থায়ী সদস্যের মাস্টার ডেটা সুরক্ষিত; ডেমো ট্রানজেকশন ক্লিয়ার করলেও মাস্টার রেকর্ড অক্ষত থাকবে।
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={loadSummary}
+              disabled={isLoadingSummary}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingSummary ? 'animate-spin' : ''}`} />
+              <span>স্ট্যাটাস রিফ্রেশ</span>
+            </button>
+          </div>
+
+          {/* Master vs Demo Comparison */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Master Data Protection */}
+            <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3.5 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sky-400 font-bold text-sm">
+                    <ShieldCheck className="w-4 h-4" />
+                    <h4>স্থায়ী মাস্টার ডেটা (Master Records)</h4>
+                  </div>
+                  <span className="text-[10px] text-sky-400/90 bg-sky-400/10 border border-sky-400/20 px-2 py-0.5 rounded-md font-semibold">
+                    isMasterData: true
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-sky-950/40 border border-sky-800/40 rounded-xl text-xs text-sky-200/90">
+                  “এই রেকর্ডগুলো বিল্ডিংয়ের স্থায়ী মাস্টার ডেটা। এগুলো ডেমো ক্লিয়ারেন্স দিয়ে মোছা সম্ভব নয়।”
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                  <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                    <div className="text-slate-400 text-[11px]">মোট মাস্টার ফ্ল্যাট</div>
+                    <div className="text-xl font-bold text-white font-sans mt-0.5">
+                      {summary ? `${summary.masterFlatsCount} টি` : '28 টি'}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1">2-A থেকে 9-D (স্থায়ী)</div>
+                  </div>
+
+                  <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                    <div className="text-slate-400 text-[11px]">মোট মাস্টার সদস্য</div>
+                    <div className="text-xl font-bold text-white font-sans mt-0.5">
+                      {summary ? `${summary.masterMembersCount} জন` : '25 জন'}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1">JCT-001 ~ JCT-025</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleSeedMasterData}
+                  disabled={isSeedingMaster}
+                  className="w-full py-2 px-3 bg-sky-950 hover:bg-sky-900 border border-sky-800/80 text-sky-300 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSeedingMaster ? 'animate-spin' : ''}`} />
+                  <span>মাস্টার ডেটা পুনর্গঠন / সিঙ্ক করুন</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Transactional Demo Data */}
+            <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3.5 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                    <Layers className="w-4 h-4" />
+                    <h4>ট্রানজেকশনাল ডেমো ডেটা</h4>
+                  </div>
+                  <span className="text-[10px] text-amber-400/90 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-md font-semibold">
+                    রিসেটেবল
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  পরীক্ষামূলক ডেমো বিল, খরচ, ভাউচার ও পেমেন্ট রেকর্ড পরিসংখ্যান।
+                </p>
+
+                <div className="grid grid-cols-3 gap-2 text-xs pt-1">
+                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-center">
+                    <div className="text-slate-400 text-[10px]">মাসিক বিল</div>
+                    <div className="text-base font-bold text-amber-400 font-sans mt-0.5">
+                      {summary ? summary.demoBillsCount : 1}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-center">
+                    <div className="text-slate-400 text-[10px]">খরচ</div>
+                    <div className="text-base font-bold text-amber-400 font-sans mt-0.5">
+                      {summary ? summary.demoExpensesCount : 8}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-center">
+                    <div className="text-slate-400 text-[10px]">ভাউচার</div>
+                    <div className="text-base font-bold text-sky-400 font-sans mt-0.5">
+                      {summary ? summary.demoVouchersCount : 8}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-center">
+                    <div className="text-slate-400 text-[10px]">পেমেন্ট</div>
+                    <div className="text-base font-bold text-emerald-400 font-sans mt-0.5">
+                      {summary ? summary.demoPaymentsCount : 6}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-center">
+                    <div className="text-slate-400 text-[10px]">রসিদ</div>
+                    <div className="text-base font-bold text-emerald-400 font-sans mt-0.5">
+                      {summary ? summary.demoReceiptsCount : 6}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-center">
+                    <div className="text-slate-400 text-[10px]">নোটিশ</div>
+                    <div className="text-base font-bold text-purple-400 font-sans mt-0.5">
+                      {summary ? summary.demoNoticesCount : 3}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClearDemoConfirmText('');
+                    setShowClearConfirmModal(true);
+                  }}
+                  className="py-2.5 px-3 bg-rose-950/80 hover:bg-rose-900 border border-rose-700/80 text-rose-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>সব ডেমো ডেটা মুছুন</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSeedDemoData}
+                  disabled={isSeedingDemo}
+                  className="py-2.5 px-3 bg-amber-950/80 hover:bg-amber-900 border border-amber-700/80 text-amber-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>ডেমো ডাটা সিড করুন</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Safety Confirmation Modal for Demo Clear */}
+      {showClearConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl text-white space-y-4 font-bengali">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center mx-auto">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-bold text-white">আপনি কি সব ডেমো লেনদেন মুছে ফেলতে চান?</h3>
+              <p className="text-xs text-slate-300">
+                এই অপশনটি শুধুমাত্র ট্রানজেকশনাল ডেমো রেকর্ডগুলো মুছে ফেলবে।
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-slate-950/80 rounded-2xl border border-slate-800 text-xs space-y-2.5">
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5 text-rose-400 font-bold">
+                  <Trash2 className="w-4 h-4 shrink-0" />
+                  <span>যেসব ডেমো রেকর্ড মুছে ফেলা হবে:</span>
+                </div>
+                <ul className="list-disc list-inside text-slate-300 space-y-0.5 pl-2 text-[11px]">
+                  <li>মাসিক বিল (Monthly Bills)</li>
+                  <li>খরচ (Expenses)</li>
+                  <li>ভাউচার (Vouchers)</li>
+                  <li>পেমেন্ট (Payments)</li>
+                  <li>রসিদ (Receipts)</li>
+                  <li>নোটিশ (Notices)</li>
+                </ul>
+              </div>
+
+              <div className="p-2 bg-emerald-950/40 border border-emerald-800/40 rounded-xl text-[11px] text-emerald-300 font-bold flex items-start gap-1.5">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                <span>⚠ সদস্য ও ফ্ল্যাটের মাস্টার ডেটা মুছে যাবে না। (২৮টি ফ্ল্যাট ও স্থায়ী সদস্য অক্ষত থাকবে)</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              <label className="text-[11px] text-slate-300 font-semibold block">
+                নিশ্চিত করতে নিচে হুবহু <span className="font-mono text-amber-400 font-bold">CLEAR DEMO</span> টাইপ করুন:
+              </label>
+              <input
+                type="text"
+                value={clearDemoConfirmText}
+                onChange={(e) => setClearDemoConfirmText(e.target.value)}
+                placeholder="CLEAR DEMO"
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-center font-mono font-bold text-amber-400 text-sm tracking-wider focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowClearConfirmModal(false);
+                  setClearDemoConfirmText('');
+                }}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+              >
+                বাতিল করুন
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearDemoData}
+                disabled={isClearingDemo || clearDemoConfirmText.trim() !== 'CLEAR DEMO'}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {isClearingDemo ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                <span>হ্যাঁ, মুছে ফেলুন</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

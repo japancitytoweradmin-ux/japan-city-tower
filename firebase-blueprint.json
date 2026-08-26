@@ -1,0 +1,184 @@
+{
+  "entities": {
+    "User": {
+      "collection": "users",
+      "fields": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "memberId": { "type": "string", "description": "Member ID, e.g. JCT-006" },
+        "name": { "type": "string", "description": "Full name" },
+        "banglaName": { "type": "string", "description": "Bangla full name" },
+        "email": { "type": "string", "description": "User email address" },
+        "mobile": { "type": "string", "description": "Mobile number" },
+        "role": { "type": "string", "description": "SUPER_ADMIN | ADMIN | ACCOUNTANT | MEMBER | VIEWER" },
+        "status": { "type": "string", "description": "ACTIVE | INACTIVE" },
+        "flatUnits": { "type": "array", "description": "List of flat units owned, e.g. ['6-B', '7-B', '8-B']" },
+        "isDemo": { "type": "boolean", "description": "Demo flag" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    },
+    "Flat": {
+      "collection": "flats",
+      "fields": {
+        "flatId": { "type": "string", "description": "Flat identifier, e.g. 6-B" },
+        "unitNumber": { "type": "string", "description": "Flat unit number" },
+        "floor": { "type": "number", "description": "Floor number (1-9)" },
+        "unitType": { "type": "string", "description": "Residential | Commercial" },
+        "memberId": { "type": "string", "description": "Owner Member ID, e.g. JCT-006" },
+        "ownerName": { "type": "string", "description": "Owner Bangla name" },
+        "ownerPhone": { "type": "string", "description": "Owner phone" },
+        "monthlyBill": { "type": "number", "description": "Base monthly bill amount" },
+        "currentPaid": { "type": "number", "description": "Current month paid amount" },
+        "currentDue": { "type": "number", "description": "Current month due amount" },
+        "status": { "type": "string", "description": "ACTIVE | INACTIVE" },
+        "paymentStatus": { "type": "string", "description": "PAID | PARTIAL | DUE | OVERDUE" },
+        "isMasterData": { "type": "boolean", "description": "Master data flag (cannot be deleted by demo clear)" },
+        "isDemo": { "type": "boolean", "description": "Demo flag" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    },
+    "Member": {
+      "collection": "members",
+      "fields": {
+        "memberId": { "type": "string", "description": "Unique Member ID, e.g. JCT-006" },
+        "name": { "type": "string", "description": "Full name" },
+        "banglaName": { "type": "string", "description": "Bangla name" },
+        "memberType": { "type": "string", "description": "INDIVIDUAL | PROPERTY_OWNER | COMPANY" },
+        "mobile": { "type": "string", "description": "Phone number" },
+        "email": { "type": "string", "description": "Email address" },
+        "flatIds": { "type": "array", "description": "Array of owned flat unit numbers e.g. ['6-B', '7-B', '8-B']" },
+        "totalUnits": { "type": "number", "description": "Total units owned" },
+        "totalBill": { "type": "number", "description": "Total monthly bill" },
+        "totalPaid": { "type": "number", "description": "Total paid" },
+        "totalDue": { "type": "number", "description": "Total due" },
+        "status": { "type": "string", "description": "ACTIVE | INACTIVE" },
+        "isMasterData": { "type": "boolean", "description": "Master data flag" },
+        "isDemo": { "type": "boolean", "description": "Demo flag" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    },
+    "Expense": {
+      "collection": "expenses",
+      "fields": {
+        "expenseId": { "type": "string", "description": "Expense ID" },
+        "month": { "type": "string", "description": "Month string, e.g. 2025-06" },
+        "year": { "type": "string", "description": "Year string, e.g. 2025" },
+        "category": { "type": "string", "description": "ELECTRICITY | GUARD_SALARY | LIFT_SERVICE | etc." },
+        "title": { "type": "string", "description": "Expense title" },
+        "amount": { "type": "number", "description": "Expense amount" },
+        "expenseDate": { "type": "string", "description": "Date of expense" },
+        "description": { "type": "string", "description": "Expense details" },
+        "paymentMethod": { "type": "string", "description": "Payment method" },
+        "voucherNumber": { "type": "string", "description": "Voucher or memo ref" },
+        "voucherFiles": { "type": "array", "description": "Attached voucher file metadata" },
+        "status": { "type": "string", "description": "VERIFIED | PENDING | REJECTED" },
+        "createdBy": { "type": "string", "description": "User who created the record" },
+        "isDemo": { "type": "boolean", "description": "True if demo transaction" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    },
+    "MonthlyBill": {
+      "collection": "monthlyBills",
+      "fields": {
+        "billId": { "type": "string", "description": "Bill ID e.g. BILL-2025-06" },
+        "month": { "type": "string", "description": "Month, e.g. 2025-06" },
+        "monthBangla": { "type": "string", "description": "Month in Bangla" },
+        "year": { "type": "string", "description": "Year, e.g. 2025" },
+        "totalExpense": { "type": "number", "description": "Total expenses for the month" },
+        "totalFlats": { "type": "number", "description": "Total billable flats (28)" },
+        "perFlatAmount": { "type": "number", "description": "Per flat bill amount (e.g. 1997)" },
+        "adjustment": { "type": "number", "description": "Rounding adjustment" },
+        "status": { "type": "string", "description": "DRAFT | PUBLISHED | CLOSED" },
+        "publishedAt": { "type": "string", "description": "Publish date" },
+        "isDemo": { "type": "boolean", "description": "True if demo record" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    },
+    "Payment": {
+      "collection": "payments",
+      "fields": {
+        "paymentId": { "type": "string", "description": "Payment record ID" },
+        "receiptId": { "type": "string", "description": "Receipt document reference ID" },
+        "receiptNumber": { "type": "string", "description": "Unique receipt number e.g. JCT-2026-000001" },
+        "memberId": { "type": "string", "description": "Member ID" },
+        "memberName": { "type": "string", "description": "Member Name" },
+        "flatId": { "type": "string", "description": "Flat unit identifier e.g. 6-B" },
+        "flatUnitNumber": { "type": "string", "description": "Flat unit number e.g. 6-B" },
+        "billingYear": { "type": "number", "description": "Billing Year (2026-2035)" },
+        "billingMonth": { "type": "number", "description": "Billing Month (1-12)" },
+        "billingPeriodId": { "type": "string", "description": "Billing period identifier e.g. 2026-08" },
+        "monthBangla": { "type": "string", "description": "Month in Bangla" },
+        "billAmount": { "type": "number", "description": "Base/Current bill amount for the period" },
+        "previousDue": { "type": "number", "description": "Previous accumulated due for the flat" },
+        "paidAmount": { "type": "number", "description": "Amount paid in this transaction" },
+        "currentDue": { "type": "number", "description": "Remaining due after this payment: previousDue + billAmount - paidAmount" },
+        "dueAmount": { "type": "number", "description": "Remaining due (alias for currentDue)" },
+        "paymentDate": { "type": "string", "description": "Payment date YYYY-MM-DD" },
+        "paymentMethod": { "type": "string", "description": "Cash | Bank | Other" },
+        "transactionRef": { "type": "string", "description": "Transaction reference or memo" },
+        "remarks": { "type": "string", "description": "Payment notes and remarks" },
+        "collectedBy": { "type": "string", "description": "Name of collector / admin" },
+        "status": { "type": "string", "description": "PAID | PARTIAL | DUE | OVERDUE" },
+        "isDemo": { "type": "boolean", "description": "True if demo transaction" },
+        "createdBy": { "type": "string", "description": "User who created the record" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    },
+    "Receipt": {
+      "collection": "receipts",
+      "fields": {
+        "receiptId": { "type": "string", "description": "Receipt ID" },
+        "receiptNumber": { "type": "string", "description": "Money receipt number e.g. JCT-2026-000001" },
+        "paymentId": { "type": "string", "description": "Payment ID reference" },
+        "memberId": { "type": "string", "description": "Member ID" },
+        "memberName": { "type": "string", "description": "Member Name" },
+        "flatId": { "type": "string", "description": "Flat unit number e.g. 6-B" },
+        "flatUnitNumber": { "type": "string", "description": "Flat unit number e.g. 6-B" },
+        "billingYear": { "type": "number", "description": "Billing Year (2026-2035)" },
+        "billingMonth": { "type": "number", "description": "Billing Month (1-12)" },
+        "billingPeriodId": { "type": "string", "description": "Billing period identifier e.g. 2026-08" },
+        "billAmount": { "type": "number", "description": "Bill amount" },
+        "previousDue": { "type": "number", "description": "Previous due" },
+        "paidAmount": { "type": "number", "description": "Amount received" },
+        "currentDue": { "type": "number", "description": "Current due remaining" },
+        "amount": { "type": "number", "description": "Amount received (alias for paidAmount)" },
+        "paymentDate": { "type": "string", "description": "Payment date" },
+        "paymentMethod": { "type": "string", "description": "Cash | Bank | Other" },
+        "remarks": { "type": "string", "description": "Remarks / notes" },
+        "collectedBy": { "type": "string", "description": "Collector name" },
+        "isDemo": { "type": "boolean", "description": "True if demo transaction" },
+        "createdBy": { "type": "string", "description": "Creator user" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    },
+    "Notice": {
+      "collection": "notices",
+      "fields": {
+        "noticeId": { "type": "string", "description": "Notice ID" },
+        "title": { "type": "string", "description": "Notice title" },
+        "content": { "type": "string", "description": "Notice text" },
+        "priority": { "type": "string", "description": "LOW | MEDIUM | HIGH | URGENT" },
+        "targetAudience": { "type": "string", "description": "ALL | MEMBERS_ONLY | MANAGEMENT_ONLY" },
+        "author": { "type": "string", "description": "Publisher name/role" },
+        "publishedDate": { "type": "string", "description": "Published date" },
+        "isPinned": { "type": "boolean", "description": "Pinned status" },
+        "isDemo": { "type": "boolean", "description": "True if demo notice" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    },
+    "AuditLog": {
+      "collection": "auditLogs",
+      "fields": {
+        "logId": { "type": "string", "description": "Log ID" },
+        "userId": { "type": "string", "description": "User ID" },
+        "userName": { "type": "string", "description": "User display name" },
+        "action": { "type": "string", "description": "CREATE | UPDATE | DELETE | DEMO_RESET | LOGIN" },
+        "module": { "type": "string", "description": "EXPENSES | BILLS | PAYMENTS | MEMBERS | FLATS | NOTICES" },
+        "recordId": { "type": "string", "description": "Target record identifier" },
+        "description": { "type": "string", "description": "Audit description" },
+        "timestamp": { "type": "string", "description": "ISO timestamp" }
+      }
+    }
+  }
+}

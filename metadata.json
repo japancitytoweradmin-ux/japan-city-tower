@@ -1,0 +1,6 @@
+{
+  "name": "Japan City Tower - Common Bill Management",
+  "description": "জাপান সিটি টাওয়ার – কমন বিল ও হিসাব ব্যবস্থাপনা (Phase 07: Complete Member Portal, Member Bill View, Payment History, Money Receipts, Account Statement & Security)",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
