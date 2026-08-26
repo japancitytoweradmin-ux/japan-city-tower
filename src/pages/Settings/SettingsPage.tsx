@@ -209,6 +209,17 @@ export const SettingsPage: React.FC = () => {
       localStorage.setItem('jct_custom_firebase_config', JSON.stringify(config));
       localStorage.setItem('jct_firebase_auto_sync', firebaseAutoSync ? 'true' : 'false');
       
+      // Save config to cloud so mobile and other devices can sync it
+      try {
+        const { defaultDb } = await import('../../lib/firebase');
+        const { doc, setDoc } = await import('firebase/firestore');
+        const configDocRef = doc(defaultDb, 'system_config', 'firebase');
+        await setDoc(configDocRef, config);
+        console.log('Firebase config successfully saved to cloud');
+      } catch (cloudErr) {
+        console.error('Error saving firebase config to cloud:', cloudErr);
+      }
+      
       showToast('ফায়ারবেস কনফিগারেশন সফলভাবে সংরক্ষিত হয়েছে! নতুন ডেটাবেজ সংযোগ কার্যকর করতে অ্যাপ্লিকেশনটি রিলোড হচ্ছে...', 'success');
       
       setTimeout(() => {
@@ -247,9 +258,21 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleResetFirebaseConfig = () => {
+  const handleResetFirebaseConfig = async () => {
     if (window.confirm('আপনি কি নিশ্চিত যে আপনি ডিফল্ট ফায়ারবেস ডেটাবেজ কনফিগারেশনে ফিরে যেতে চান?')) {
       localStorage.removeItem('jct_custom_firebase_config');
+      
+      // Delete config from cloud so mobile and other devices reset as well
+      try {
+        const { defaultDb } = await import('../../lib/firebase');
+        const { doc, deleteDoc } = await import('firebase/firestore');
+        const configDocRef = doc(defaultDb, 'system_config', 'firebase');
+        await deleteDoc(configDocRef);
+        console.log('Firebase config successfully deleted from cloud');
+      } catch (cloudErr) {
+        console.error('Error deleting firebase config from cloud:', cloudErr);
+      }
+
       showToast('ডিফল্ট ফায়ারবেস ডেটাবেজ কনফিগারেশন সেট করা হয়েছে। অ্যাপ্লিকেশনটি রিলোড হচ্ছে...', 'info');
       setTimeout(() => {
         window.location.reload();

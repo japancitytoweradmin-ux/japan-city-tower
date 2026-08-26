@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore, collection, getDocs } from 'firebase/firestore';
+import { getFirestore, Firestore, collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 
 // Default config from firebase-applet-config.json or import.meta.env
@@ -43,12 +43,17 @@ export function getActiveFirebaseConfig(): Record<string, string> {
 
 const activeConfig = getActiveFirebaseConfig();
 
-// Initialize Firebase App instance safely
+// Initialize the default system-level app to communicate with the shared AI Studio DB
+export const defaultApp = getApps().find(a => a.name === 'default-system-app') || initializeApp(defaultFirebaseConfig, 'default-system-app');
+export const defaultDb = getFirestore(defaultApp, defaultFirebaseConfig.firestoreDatabaseId);
+
+// Initialize Firebase App instance safely for active use
 let app: FirebaseApp;
-if (!getApps().length) {
+const existingApp = getApps().find(a => a.name === '[DEFAULT]');
+if (!existingApp) {
   app = initializeApp(activeConfig);
 } else {
-  app = getApp();
+  app = existingApp;
 }
 
 // Initialize Auth
@@ -63,6 +68,43 @@ const databaseId = activeConfig.firestoreDatabaseId && activeConfig.firestoreDat
   : undefined;
 
 export const db: Firestore = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
+
+// Helper function to dynamically sync the custom config from cloud database to mobile browser's localStorage
+export async function syncFirebaseConfigFromCloud(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  try {
+    const configDocRef = doc(defaultDb, 'system_config', 'firebase');
+    const snap = await getDoc(configDocRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data && data.apiKey && data.projectId) {
+        const cloudConfig = {
+          apiKey: data.apiKey,
+          projectId: data.projectId,
+          appId: data.appId,
+          authDomain: data.authDomain || `${data.projectId}.firebaseapp.com`
+        };
+        const localStored = localStorage.getItem('jct_custom_firebase_config');
+        if (!localStored || JSON.stringify(JSON.parse(localStored)) !== JSON.stringify(cloudConfig)) {
+          console.log('New custom firebase config fetched from cloud, updating localStorage...');
+          localStorage.setItem('jct_custom_firebase_config', JSON.stringify(cloudConfig));
+          return true; // Config changed, need reload
+        }
+      }
+    } else {
+      // If there is no custom config in cloud but local has one, we should reset
+      const localStored = localStorage.getItem('jct_custom_firebase_config');
+      if (localStored) {
+        console.log('Custom firebase config deleted from cloud, resetting local config...');
+        localStorage.removeItem('jct_custom_firebase_config');
+        return true; // Config deleted, need reload
+      }
+    }
+  } catch (err) {
+    console.warn('Error syncing firebase config from cloud:', err);
+  }
+  return false;
+}
 
 // Connection test helper function
 export async function testFirebaseConnection(config: { apiKey: string; projectId: string; appId: string; authDomain?: string }): Promise<boolean> {

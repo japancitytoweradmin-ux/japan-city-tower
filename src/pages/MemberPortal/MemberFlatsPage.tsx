@@ -12,8 +12,8 @@ import {
   User,
   Clock
 } from 'lucide-react';
-import { UserProfile, FlatUnit, Member, PaymentRecord } from '../../types';
-import { sampleMembers, sampleUnits, samplePayments } from '../../data/mockData';
+import { UserProfile, FlatUnit, Member, PaymentRecord, ExpenseItem } from '../../types';
+import { sampleMembers, sampleUnits, samplePayments, sampleExpensesJune2025 } from '../../data/mockData';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { PageHeader } from '../../components/common/PageHeader';
 import { useBillingPeriod } from '../../contexts/BillingPeriodContext';
@@ -21,6 +21,8 @@ import { useTranslation } from '../../i18n/LanguageContext';
 import { flatService } from '../../services/flatService';
 import { memberService } from '../../services/memberService';
 import { paymentService } from '../../services/paymentService';
+import { expenseService } from '../../services/expenseService';
+import { calculateDualBilling, isKhalilurMember } from '../../utils/billingCalculator';
 
 interface MemberFlatsPageProps {
   currentUser: UserProfile;
@@ -37,6 +39,7 @@ export const MemberFlatsPage: React.FC<MemberFlatsPageProps> = ({
   const [flats, setFlats] = useState<FlatUnit[]>(sampleUnits);
   const [members, setMembers] = useState<Member[]>(sampleMembers);
   const [payments, setPayments] = useState<PaymentRecord[]>(samplePayments);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
 
   useEffect(() => {
     const unsubFlats = flatService.subscribeToFlats((loaded) => setFlats(loaded));
@@ -47,11 +50,15 @@ export const MemberFlatsPage: React.FC<MemberFlatsPageProps> = ({
       (loaded) => setPayments(loaded),
       billingPeriodId
     );
+    const unsubExpenses = expenseService.subscribeToExpenses((loadedExp) => {
+      setExpenses(loadedExp.length > 0 ? loadedExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []));
+    }, billingPeriodId);
 
     return () => {
       unsubFlats();
       unsubMem();
       unsubPay();
+      unsubExpenses();
     };
   }, [currentUser.memberId, billingPeriodId]);
 
@@ -65,9 +72,15 @@ export const MemberFlatsPage: React.FC<MemberFlatsPageProps> = ({
     (currentUser.flatUnits || []).includes(u.unitNumber)
   );
 
-  const baseRate = 1997;
+  const isKh = isKhalilurMember(member.memberId);
+  const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
+  const effectiveExp = periodExp.length > 0 ? periodExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
+  const dualCalc = calculateDualBilling(effectiveExp, flats.length || 28);
+
   const totalUnits = memberFlats.length || 1;
-  const totalBill = memberFlats.reduce((sum, f) => sum + (f.monthlyBaseBill || baseRate), 0);
+  const totalBill = isKh
+    ? dualCalc.khalilur.totalBill
+    : memberFlats.reduce((sum, f) => sum + (f.monthlyBaseBill || dualCalc.regularRoundedPerFlat), 0);
   const totalPaid = payments.reduce((sum, p) => sum + p.paidAmount, 0);
   const totalDue = Math.max(0, totalBill - totalPaid);
 
@@ -128,74 +141,83 @@ export const MemberFlatsPage: React.FC<MemberFlatsPageProps> = ({
 
       {/* Flats List Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {memberFlats.map((flat) => (
-          <div
-            key={flat.id || flat.unitNumber}
-            className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-slate-200 dark:border-slate-800 hover:border-amber-400 transition-all shadow-xs p-6 flex flex-col justify-between space-y-4"
-          >
-            <div className="space-y-4">
-              {/* Card Header */}
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-mono">
-                    {flat.unitType || (isBangla ? 'আবাসিক ফ্ল্যাট' : 'Residential')}
-                  </span>
-                  <h3 className="text-3xl font-black text-slate-900 dark:text-white font-mono pt-1">
-                    {isBangla ? 'ফ্ল্যাট' : 'Flat'} {flat.unitNumber}
-                  </h3>
-                  <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                    <Home className="w-3.5 h-3.5 text-amber-500" />
-                    <span>{formatNumber(flat.floor)} {isBangla ? 'ম তলা' : 'Floor'} • জাপান সিটি টাওয়ার</span>
-                  </p>
+        {memberFlats.map((flat) => {
+          const flatPaid = payments
+            .filter((p) => p.flatUnitNumber === flat.unitNumber)
+            .reduce((sum, p) => sum + p.paidAmount, 0);
+          const flatBill = isKh ? dualCalc.khalilur.perFlatBill : (flat.monthlyBaseBill || dualCalc.regularRoundedPerFlat);
+          const flatDue = Math.max(0, flatBill - flatPaid);
+          const flatStatus = flatDue === 0 ? 'PAID' : (flatPaid > 0 ? 'PARTIAL' : 'DUE');
+
+          return (
+            <div
+              key={flat.id || flat.unitNumber}
+              className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-slate-200 dark:border-slate-800 hover:border-amber-400 transition-all shadow-xs p-6 flex flex-col justify-between space-y-4"
+            >
+              <div className="space-y-4">
+                {/* Card Header */}
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-mono">
+                      {flat.unitType || (isBangla ? 'আবাসিক ফ্ল্যাট' : 'Residential')}
+                    </span>
+                    <h3 className="text-3xl font-black text-slate-900 dark:text-white font-mono pt-1">
+                      {isBangla ? 'ফ্ল্যাট' : 'Flat'} {flat.unitNumber}
+                    </h3>
+                    <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                      <Home className="w-3.5 h-3.5 text-amber-500" />
+                      <span>{formatNumber(flat.floor)} {isBangla ? 'ম তলা' : 'Floor'} • জাপান সিটি টাওয়ার</span>
+                    </p>
+                  </div>
+                  <StatusBadge status={flatStatus} />
                 </div>
-                <StatusBadge status={flat.paymentStatus || (totalDue === 0 ? 'PAID' : 'DUE')} />
+
+                {/* Financial Ledger Details */}
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/80 rounded-xl space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+                    <span>{isBangla ? 'মাসিক নির্ধারিত সার্ভিস বিল:' : 'Monthly Base Bill:'}</span>
+                    <span className="font-bold text-slate-900 dark:text-white font-mono text-sm">
+                      {formatCurrency(flatBill)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+                    <span>{isBangla ? 'এই মাসে পরিশোধিত:' : 'Paid This Month:'}</span>
+                    <span className="font-bold text-emerald-700 dark:text-emerald-400 font-mono text-sm">
+                      {formatCurrency(flatPaid)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-slate-600 dark:text-slate-300 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <span className="font-semibold">{isBangla ? 'অবশিষ্ট বকেয়া:' : 'Remaining Due:'}</span>
+                    <span className={`font-bold font-mono text-sm ${flatDue > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
+                      {formatCurrency(flatDue)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Ownership Verification */}
+                <div className="flex items-center gap-2 text-[11px] text-slate-500 pt-1">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span>{isBangla ? 'স্থায়ী মালিকানা রেকর্ডভুক্ত (Master Data Verified)' : 'Verified Permanent Master Ownership'}</span>
+                </div>
               </div>
 
-              {/* Financial Ledger Details */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/80 rounded-xl space-y-2.5 text-xs">
-                <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-                  <span>{isBangla ? 'মাসিক নির্ধারিত সার্ভিস বিল:' : 'Monthly Base Bill:'}</span>
-                  <span className="font-bold text-slate-900 dark:text-white font-mono text-sm">
-                    {formatCurrency(flat.monthlyBaseBill || baseRate)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-                  <span>{isBangla ? 'এই মাসে পরিশোধিত:' : 'Paid This Month:'}</span>
-                  <span className="font-bold text-emerald-700 dark:text-emerald-400 font-mono text-sm">
-                    {formatCurrency(flat.currentPaid)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between text-slate-600 dark:text-slate-300 pt-2 border-t border-slate-200 dark:border-slate-700">
-                  <span className="font-semibold">{isBangla ? 'অবশিষ্ট বকেয়া:' : 'Remaining Due:'}</span>
-                  <span className={`font-bold font-mono text-sm ${flat.currentDue > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
-                    {formatCurrency(flat.currentDue)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Ownership Verification */}
-              <div className="flex items-center gap-2 text-[11px] text-slate-500 pt-1">
-                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-                <span>{isBangla ? 'স্থায়ী মালিকানা রেকর্ডভুক্ত (Master Data Verified)' : 'Verified Permanent Master Ownership'}</span>
+              {/* Card Footer Action */}
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-xs text-slate-400 font-mono">{periodLabel}</span>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab?.('member-bills')}
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white dark:bg-amber-500 dark:text-slate-950 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors shadow-xs"
+                >
+                  <span>{isBangla ? 'বিলের বিস্তারিত দেখুন' : 'View Bill Details'}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
-
-            {/* Card Footer Action */}
-            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <span className="text-xs text-slate-400 font-mono">{periodLabel}</span>
-              <button
-                type="button"
-                onClick={() => onNavigateTab?.('member-bills')}
-                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white dark:bg-amber-500 dark:text-slate-950 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors shadow-xs"
-              >
-                <span>{isBangla ? 'বিলের বিস্তারিত দেখুন' : 'View Bill Details'}</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -47,6 +47,22 @@ function AppContent() {
   // Global Modal States
   const [viewingReceipt, setViewingReceipt] = useState<PaymentRecord | null>(null);
 
+  // Synchronize custom firebase config from default cloud database to this browser automatically (e.g. mobile synchronization)
+  useEffect(() => {
+    async function syncConfig() {
+      try {
+        const { syncFirebaseConfigFromCloud } = await import('./lib/firebase');
+        const needsReload = await syncFirebaseConfigFromCloud();
+        if (needsReload) {
+          console.log('Firebase configuration synchronized with cloud database. Reloading to apply...');
+        }
+      } catch (err) {
+        console.error('Error in background configuration sync:', err);
+      }
+    }
+    syncConfig();
+  }, []);
+
   // Auto-initialize master database if it's fresh/empty
   useEffect(() => {
     if (userProfile) {

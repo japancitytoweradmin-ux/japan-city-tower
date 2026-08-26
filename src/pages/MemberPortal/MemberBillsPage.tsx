@@ -15,8 +15,8 @@ import {
   ArrowRight,
   Info
 } from 'lucide-react';
-import { UserProfile, FlatUnit, Member, PaymentRecord } from '../../types';
-import { sampleMembers, sampleUnits, samplePayments } from '../../data/mockData';
+import { UserProfile, FlatUnit, Member, PaymentRecord, ExpenseItem } from '../../types';
+import { sampleMembers, sampleUnits, samplePayments, sampleExpensesJune2025 } from '../../data/mockData';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { PageHeader } from '../../components/common/PageHeader';
 import { useBillingPeriod } from '../../contexts/BillingPeriodContext';
@@ -24,6 +24,8 @@ import { useTranslation } from '../../i18n/LanguageContext';
 import { flatService } from '../../services/flatService';
 import { memberService } from '../../services/memberService';
 import { paymentService } from '../../services/paymentService';
+import { expenseService } from '../../services/expenseService';
+import { calculateDualBilling, isKhalilurMember } from '../../utils/billingCalculator';
 
 interface MemberBillsPageProps {
   currentUser: UserProfile;
@@ -40,6 +42,7 @@ export const MemberBillsPage: React.FC<MemberBillsPageProps> = ({
   const [flats, setFlats] = useState<FlatUnit[]>(sampleUnits);
   const [members, setMembers] = useState<Member[]>(sampleMembers);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [selectedFlatTab, setSelectedFlatTab] = useState<string>('ALL');
 
   useEffect(() => {
@@ -51,11 +54,15 @@ export const MemberBillsPage: React.FC<MemberBillsPageProps> = ({
       (loaded) => setPayments(loaded),
       billingPeriodId
     );
+    const unsubExpenses = expenseService.subscribeToExpenses((loadedExp) => {
+      setExpenses(loadedExp.length > 0 ? loadedExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []));
+    }, billingPeriodId);
 
     return () => {
       unsubFlats();
       unsubMem();
       unsubPay();
+      unsubExpenses();
     };
   }, [currentUser.memberId, billingPeriodId]);
 
@@ -72,8 +79,15 @@ export const MemberBillsPage: React.FC<MemberBillsPageProps> = ({
     ? memberFlats 
     : memberFlats.filter(f => f.unitNumber === selectedFlatTab);
 
-  const baseRate = 1997;
-  const totalBill = filteredFlats.reduce((sum, f) => sum + (f.monthlyBaseBill || baseRate), 0);
+  const isKh = isKhalilurMember(member.memberId);
+  const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
+  const effectiveExp = periodExp.length > 0 ? periodExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
+  const dualCalc = calculateDualBilling(effectiveExp, flats.length || 28);
+
+  const totalBill = selectedFlatTab === 'ALL'
+    ? (isKh ? dualCalc.khalilur.totalBill : filteredFlats.reduce((sum, f) => sum + (f.monthlyBaseBill || dualCalc.regularRoundedPerFlat), 0))
+    : (isKh ? dualCalc.khalilur.perFlatBill : filteredFlats.reduce((sum, f) => sum + (f.monthlyBaseBill || dualCalc.regularRoundedPerFlat), 0));
+
   const totalPaid = payments
     .filter(p => selectedFlatTab === 'ALL' || p.flatUnitNumber === selectedFlatTab)
     .reduce((sum, p) => sum + p.paidAmount, 0);
@@ -148,7 +162,15 @@ export const MemberBillsPage: React.FC<MemberBillsPageProps> = ({
               {formatCurrency(totalBill)}
             </p>
             <p className="text-[11px] text-slate-400">
-              {selectedFlatTab === 'ALL' ? `(${formatNumber(filteredFlats.length)} × ${formatCurrency(baseRate)})` : (isBangla ? 'মাসিক সাধারণ সার্ভিস চার্জ' : 'Monthly Common Service Charge')}
+              {selectedFlatTab === 'ALL' ? (
+                isKh ? (
+                  isBangla ? '(৩টি ফ্ল্যাট বিশেষ সূত্রানুযায়ী মোট বিল)' : '(Special 3-Flat Formula Bill)'
+                ) : (
+                  `(${formatNumber(filteredFlats.length)} × ${formatCurrency(dualCalc.regularRoundedPerFlat)})`
+                )
+              ) : (
+                isBangla ? 'মাসিক নির্ধারিত সার্ভিস চার্জ' : 'Monthly Common Service Charge'
+              )}
             </p>
           </div>
 
@@ -184,7 +206,7 @@ export const MemberBillsPage: React.FC<MemberBillsPageProps> = ({
             const flatPaid = payments
               .filter(p => p.flatUnitNumber === flat.unitNumber)
               .reduce((sum, p) => sum + p.paidAmount, 0);
-            const flatBill = flat.monthlyBaseBill || baseRate;
+            const flatBill = isKh ? dualCalc.khalilur.perFlatBill : (flat.monthlyBaseBill || dualCalc.regularRoundedPerFlat);
             const flatDue = Math.max(0, flatBill - flatPaid);
 
             return (
