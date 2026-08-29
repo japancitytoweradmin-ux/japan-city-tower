@@ -104,13 +104,16 @@ export const CollectionsPage: React.FC = () => {
   const periodExpenses = expenses.filter((e) => (e.billingPeriodId || e.month) === billingPeriodId);
   const totalPeriodExpense = periodExpenses.reduce((sum, e) => sum + e.amount, 0);
 
+  const isMasterCleared = typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
+  const totalFlatsCount = isMasterCleared ? flats.length : (flats.length || 28);
+
   let totalBaseBillTarget = 0;
   if (currentBill) {
-    totalBaseBillTarget = currentBill.totalExpense || ((currentBill.finalPerFlatAmount || currentBill.perFlatAmount || 1997) * (flats.length || 28));
+    totalBaseBillTarget = currentBill.totalExpense || ((currentBill.finalPerFlatAmount || currentBill.perFlatAmount || 1997) * totalFlatsCount);
   } else if (periodExpenses.length > 0) {
     totalBaseBillTarget = totalPeriodExpense;
   } else if (activePayments.length > 0) {
-    totalBaseBillTarget = (flats.length || 28) * 1997;
+    totalBaseBillTarget = totalFlatsCount * 1997;
   } else {
     totalBaseBillTarget = 0;
   }

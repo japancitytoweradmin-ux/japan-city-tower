@@ -47,7 +47,7 @@ export const calculateDualBilling = (
   expenses: ExpenseItem[],
   totalFlats: number = 28
 ): DualBillingCalculation => {
-  const totalUnits = totalFlats || 28;
+  const totalUnits = (totalFlats !== undefined && totalFlats !== null) ? totalFlats : 28;
   const totalExpense = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
   // 1. Regular Flat Calculation

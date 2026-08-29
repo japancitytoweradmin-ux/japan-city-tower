@@ -73,12 +73,13 @@ export const MemberStatementPage: React.FC<MemberStatementPageProps> = ({
   };
 
   const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
+  const isMasterCleared = typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
   const { dualCalc, perFlatBill, isKh } = calculateMemberBillSummary(
     member,
     memberFlats,
     payments,
     periodExp,
-    flats.length || 28
+    isMasterCleared ? flats.length : (flats.length || 28)
   );
 
   // Build statement entries for member's flats

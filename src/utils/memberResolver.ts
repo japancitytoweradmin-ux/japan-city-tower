@@ -167,7 +167,7 @@ export const calculateMemberBillSummary = (
   totalBuildingFlats: number = 28
 ): MemberBillSummary => {
   const isKh = isKhalilurMember(activeMember.memberId);
-  const dualCalc = calculateDualBilling(expenses, totalBuildingFlats || 28);
+  const dualCalc = calculateDualBilling(expenses, (totalBuildingFlats !== undefined && totalBuildingFlats !== null) ? totalBuildingFlats : 28);
   
   const totalUnits = memberFlats.length || activeMember.flatUnitNumbers?.length || 1;
   const perFlatBill = isKh

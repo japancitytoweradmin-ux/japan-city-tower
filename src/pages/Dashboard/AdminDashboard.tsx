@@ -103,8 +103,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [billingPeriodId]);
 
   // Financial calculations for the selected period
-  const totalFlatsCount = flats.length || 28;
-  const totalMembersCount = members.length || 25;
+  const isMasterCleared = typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
+  const totalFlatsCount = isMasterCleared ? flats.length : (flats.length || 28);
+  const totalMembersCount = isMasterCleared ? members.length : (members.length || 25);
 
   // Total expenses in current period
   const periodExpenses = expenses.filter(

@@ -76,12 +76,13 @@ export const MemberFlatsPage: React.FC<MemberFlatsPageProps> = ({
   const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
   const effectiveExp = periodExp.length > 0 ? periodExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
   
+  const isMasterCleared = typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
   const { dualCalc, perFlatBill, totalUnits, totalBill, totalPaid, totalDue, isKh } = calculateMemberBillSummary(
     member,
     memberFlats,
     payments,
     effectiveExp,
-    flats.length || 28
+    isMasterCleared ? flats.length : (flats.length || 28)
   );
 
   return (

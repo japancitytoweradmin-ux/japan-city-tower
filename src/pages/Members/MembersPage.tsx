@@ -123,7 +123,8 @@ export const MembersPage: React.FC<MembersPageProps> = ({ onNavigateTab }) => {
     const isKh = isKhalilurMember(member.memberId);
     const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
     const effectiveExp = periodExp.length > 0 ? periodExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
-    const dualCalc = calculateDualBilling(effectiveExp, flats.length || 28);
+    const isMasterCleared = typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
+    const dualCalc = calculateDualBilling(effectiveExp, isMasterCleared ? flats.length : (flats.length || 28));
 
     const monthlyBill = isKh 
       ? dualCalc.khalilur.totalBill 
