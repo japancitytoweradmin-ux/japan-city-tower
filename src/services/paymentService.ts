@@ -70,20 +70,31 @@ export const paymentService = {
     }
   },
 
-  getPaymentsByMember: async (memberId: string): Promise<PaymentRecord[]> => {
+  getPaymentsByMember: async (memberId: string, flatUnits?: string[]): Promise<PaymentRecord[]> => {
     try {
-      const q = query(
-        collection(db, PAYMENTS_COLLECTION), 
-        where('memberId', '==', memberId)
-      );
-      const snapshot = await getDocs(q);
+      const snapshot = await getDocs(collection(db, PAYMENTS_COLLECTION));
       if (snapshot.empty) {
         return [];
       }
-      return snapshot.docs.map((doc) => ({
+      let list = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data()
       })) as PaymentRecord[];
+
+      list = list.filter(p => !p.isDeleted);
+      const normMemberId = (memberId || '').trim().toUpperCase();
+      const normFlats = (flatUnits || []).map(f => f.trim().toUpperCase());
+
+      list = list.filter(p => {
+        const pMemberId = (p.memberId || '').trim().toUpperCase();
+        const pFlat = (p.flatUnitNumber || p.flatId || '').trim().toUpperCase();
+        const matchMember = Boolean(normMemberId && pMemberId === normMemberId);
+        const matchFlat = Boolean(pFlat && normFlats.includes(pFlat));
+        return matchMember || matchFlat;
+      });
+
+      list.sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+      return list;
     } catch (error) {
       console.warn('Error fetching member payments:', error);
       return [];
@@ -95,7 +106,7 @@ export const paymentService = {
     periodId?: string
   ) => {
     try {
-      const q = query(collection(db, PAYMENTS_COLLECTION), orderBy('paymentDate', 'desc'));
+      const q = query(collection(db, PAYMENTS_COLLECTION));
       return onSnapshot(
         q,
         (snapshot) => {
@@ -113,6 +124,8 @@ export const paymentService = {
             if (periodId) {
               payments = payments.filter(p => (p.billingPeriodId || p.month) === periodId);
             }
+
+            payments.sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
             callback(payments);
           }
         },
@@ -131,14 +144,12 @@ export const paymentService = {
   subscribeToMemberPayments: (
     memberId: string,
     callback: (payments: PaymentRecord[]) => void,
-    periodId?: string
+    periodId?: string,
+    flatUnits?: string[]
   ) => {
     try {
-      const q = query(
-        collection(db, PAYMENTS_COLLECTION), 
-        where('memberId', '==', memberId),
-        orderBy('paymentDate', 'desc')
-      );
+      // Subscribing to payments and filtering in-memory to avoid Firestore composite index failures
+      const q = query(collection(db, PAYMENTS_COLLECTION));
       return onSnapshot(
         q,
         (snapshot) => {
@@ -150,12 +161,24 @@ export const paymentService = {
               ...doc.data()
             })) as PaymentRecord[];
 
-            // Filter out soft-deleted records
             payments = payments.filter(p => !p.isDeleted);
+
+            const normMemberId = (memberId || '').trim().toUpperCase();
+            const normFlats = (flatUnits || []).map(f => f.trim().toUpperCase());
+
+            payments = payments.filter(p => {
+              const pMemberId = (p.memberId || '').trim().toUpperCase();
+              const pFlat = (p.flatUnitNumber || p.flatId || '').trim().toUpperCase();
+              const matchMember = Boolean(normMemberId && pMemberId === normMemberId);
+              const matchFlat = Boolean(pFlat && normFlats.includes(pFlat));
+              return matchMember || matchFlat;
+            });
 
             if (periodId) {
               payments = payments.filter(p => (p.billingPeriodId || p.month) === periodId);
             }
+
+            payments.sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
             callback(payments);
           }
         },

@@ -68,12 +68,13 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
     const unsubMem = memberService.subscribeToMembers((loaded) => setMembers(loaded));
     const unsubFlats = flatService.subscribeToFlats((loaded) => setFlats(loaded));
     
-    // Member-scoped payments
+    // Member-scoped payments with real-time updates
     const targetMemberId = currentUser.memberId || 'JCT-006';
     const unsubPay = paymentService.subscribeToMemberPayments(
       targetMemberId,
       (loaded) => setPayments(loaded),
-      billingPeriodId
+      billingPeriodId,
+      currentUser.flatUnits
     );
 
     const unsubExpenses = expenseService.subscribeToExpenses((loadedExp) => {
@@ -89,12 +90,26 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
       unsubExpenses();
       unsubNotices();
     };
-  }, [currentUser.memberId, billingPeriodId]);
+  }, [currentUser.memberId, currentUser.flatUnits, billingPeriodId]);
 
   // Find member details
-  const member = members.find(
-    (m) => m.memberId === (currentUser.memberId || 'JCT-006') || m.id === currentUser.id
-  ) || sampleMembers[5];
+  const member: Member = members.find(
+    (m) => (m.memberId && currentUser.memberId && m.memberId.toUpperCase() === currentUser.memberId.toUpperCase()) || 
+           (currentUser.flatUnits && (m.flatUnitNumbers || []).some(f => currentUser.flatUnits?.includes(f))) ||
+           m.id === currentUser.id
+  ) || {
+    id: currentUser.id || 'usr-member',
+    memberId: currentUser.memberId || (currentUser.flatUnits && currentUser.flatUnits[0]) || 'JCT-001',
+    name: currentUser.name || 'সদস্য',
+    banglaName: currentUser.banglaName || currentUser.name || 'সদস্য',
+    email: currentUser.email || 'member@japancitytower.com',
+    phone: currentUser.phone || '০১৭১১-০০০০০০',
+    memberType: 'FLAT_OWNER',
+    memberTypeBangla: 'ফ্ল্যাট মালিক',
+    flatUnitNumbers: currentUser.flatUnits || ['2-A'],
+    totalUnits: (currentUser.flatUnits || []).length || 1,
+    status: 'ACTIVE'
+  };
 
   // Assigned flats for this member
   const memberFlats = flats.filter((u) => 
@@ -102,7 +117,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
     (currentUser.flatUnits || []).includes(u.unitNumber)
   );
 
-  const memberPayments = payments.filter((p) => p.memberId === member.memberId);
+  const memberPayments = payments;
 
   // Multi-unit totals for current billing period using dual billing engine
   const totalUnits = memberFlats.length || member.flatUnitNumbers?.length || 1;

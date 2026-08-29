@@ -48,7 +48,9 @@ export const MemberPaymentsPage: React.FC<MemberPaymentsPageProps> = ({
     const targetMemberId = currentUser.memberId || 'JCT-006';
     const unsubPay = paymentService.subscribeToMemberPayments(
       targetMemberId,
-      (loaded) => setPayments(loaded)
+      (loaded) => setPayments(loaded),
+      undefined,
+      currentUser.flatUnits
     );
     const unsubMem = memberService.subscribeToMembers((loaded) => setMembers(loaded));
     const unsubFlats = flatService.subscribeToFlats((loaded) => setFlats(loaded));
@@ -58,11 +60,25 @@ export const MemberPaymentsPage: React.FC<MemberPaymentsPageProps> = ({
       unsubMem();
       unsubFlats();
     };
-  }, [currentUser.memberId]);
+  }, [currentUser.memberId, currentUser.flatUnits]);
 
-  const member = members.find(
-    (m) => m.memberId === (currentUser.memberId || 'JCT-006') || m.id === currentUser.id
-  ) || sampleMembers[5];
+  const member: Member = members.find(
+    (m) => (m.memberId && currentUser.memberId && m.memberId.toUpperCase() === currentUser.memberId.toUpperCase()) || 
+           (currentUser.flatUnits && (m.flatUnitNumbers || []).some(f => currentUser.flatUnits?.includes(f))) ||
+           m.id === currentUser.id
+  ) || {
+    id: currentUser.id || 'usr-member',
+    memberId: currentUser.memberId || (currentUser.flatUnits && currentUser.flatUnits[0]) || 'JCT-001',
+    name: currentUser.name || 'সদস্য',
+    banglaName: currentUser.banglaName || currentUser.name || 'সদস্য',
+    email: currentUser.email || 'member@japancitytower.com',
+    phone: currentUser.phone || '০১৭১১-০০০০০০',
+    memberType: 'FLAT_OWNER',
+    memberTypeBangla: 'ফ্ল্যাট মালিক',
+    flatUnitNumbers: currentUser.flatUnits || ['2-A'],
+    totalUnits: (currentUser.flatUnits || []).length || 1,
+    status: 'ACTIVE'
+  };
 
   const memberFlats = flats.filter((u) => 
     (member.flatUnitNumbers || []).includes(u.unitNumber) || 
@@ -71,11 +87,6 @@ export const MemberPaymentsPage: React.FC<MemberPaymentsPageProps> = ({
 
   // Filter payments
   const filteredPayments = payments.filter((p) => {
-    // Only current member's payments
-    if (p.memberId !== member.memberId && p.memberId !== (currentUser.memberId || 'JCT-006')) {
-      return false;
-    }
-
     if (selectedFlat !== 'ALL' && p.flatUnitNumber !== selectedFlat) {
       return false;
     }

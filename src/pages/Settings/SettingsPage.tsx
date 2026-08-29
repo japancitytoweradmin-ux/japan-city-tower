@@ -441,10 +441,28 @@ export const SettingsPage: React.FC = () => {
       await demoDataService.seedMasterData();
       showToast('২৮টি ফ্ল্যাট ও সদস্য মাস্টার ডাটা ক্লাউডে সিঙ্ক করা হয়েছে', 'success');
       await loadSummary();
+      setTimeout(() => window.location.reload(), 800);
     } catch (err: any) {
       showToast('মাস্টার ডাটা সিঙ্কে সমস্যা হয়েছে: ' + (err.message || 'Error'), 'error');
     } finally {
       setIsSeedingMaster(false);
+    }
+  };
+
+  // Clear Master Data Function (Delete 28 Flats & 25 Members)
+  const handleClearMasterData = async () => {
+    if (window.confirm('সতর্কতা: আপনি কি নিশ্চিত যে আপনি ২৮টি ফ্ল্যাট এবং ২৫টি সদস্যের ডিফল্ট ডাটা পুরোপুরি মুছে ফেলে নতুনভাবে ফায়ারবেসে সদস্য যুক্ত করতে চান?')) {
+      setIsSeedingMaster(true);
+      try {
+        const res = await demoDataService.clearMasterMembersAndFlats('Admin');
+        showToast(`সকল ডিফল্ট সদস্য (${res.deletedMembersCount} জন) ও ফ্ল্যাট (${res.deletedFlatsCount} টি) মুছে ফেলা হয়েছে।`, 'success');
+        await loadSummary();
+        setTimeout(() => window.location.reload(), 1000);
+      } catch (err: any) {
+        showToast('ডিফল্ট ডাটা মোছাতে সমস্যা হয়েছে: ' + (err.message || 'Error'), 'error');
+      } finally {
+        setIsSeedingMaster(false);
+      }
     }
   };
 
@@ -1213,15 +1231,26 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="pt-2">
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={handleClearMasterData}
+                  disabled={isSeedingMaster}
+                  className="py-2.5 px-3 bg-rose-950/80 hover:bg-rose-900 border border-rose-700/80 text-rose-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                  title="ডিফল্ট ২৮টি ফ্ল্যাট ও ২৫টি সদস্য তথ্য মুছে নতুনভাবে এন্ট্রি দিতে এটি নিশ্চিত করুন"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>ডিফল্ট মেম্বার/ফ্ল্যাট মুছুন</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={handleSeedMasterData}
                   disabled={isSeedingMaster}
-                  className="w-full py-2 px-3 bg-sky-950 hover:bg-sky-900 border border-sky-800/80 text-sky-300 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50 cursor-pointer"
+                  className="py-2.5 px-3 bg-sky-950 hover:bg-sky-900 border border-sky-800/80 text-sky-300 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isSeedingMaster ? 'animate-spin' : ''}`} />
-                  <span>মাস্টার ডেটা পুনর্গঠন / সিঙ্ক করুন</span>
+                  <span>মাস্টার ডেটা সিঙ্ক করুন</span>
                 </button>
               </div>
             </div>

@@ -13,8 +13,13 @@ import { db } from '../lib/firebase';
 import { FlatUnit, OwnershipHistoryRecord } from '../types';
 import { sampleUnits } from '../data/mockData';
 import { auditService } from './auditService';
+import { deleteDoc } from 'firebase/firestore';
 
 const FLATS_COLLECTION = 'flats';
+
+const isMasterCleared = (): boolean => {
+  return typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
+};
 
 export const flatService = {
   // Fetch all flats
@@ -23,7 +28,7 @@ export const flatService = {
       const q = query(collection(db, FLATS_COLLECTION), orderBy('floor', 'asc'));
       const snapshot = await getDocs(q);
       if (snapshot.empty) {
-        return sampleUnits;
+        return isMasterCleared() ? [] : sampleUnits;
       }
       return snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -31,7 +36,7 @@ export const flatService = {
       })) as FlatUnit[];
     } catch (error) {
       console.warn('Error loading flats from Firestore, falling back to initial master data:', error);
-      return sampleUnits;
+      return isMasterCleared() ? [] : sampleUnits;
     }
   },
 
@@ -43,9 +48,11 @@ export const flatService = {
       if (snap.exists()) {
         return { id: snap.id, ...snap.data() } as FlatUnit;
       }
+      if (isMasterCleared()) return null;
       const local = sampleUnits.find(u => u.unitNumber === unitNumber || u.id === unitNumber);
       return local || null;
     } catch {
+      if (isMasterCleared()) return null;
       const local = sampleUnits.find(u => u.unitNumber === unitNumber || u.id === unitNumber);
       return local || null;
     }
@@ -59,7 +66,7 @@ export const flatService = {
         q,
         (snapshot) => {
           if (snapshot.empty) {
-            callback(sampleUnits);
+            callback(isMasterCleared() ? [] : sampleUnits);
           } else {
             const flats = snapshot.docs.map((doc) => ({
               id: doc.id,
@@ -70,13 +77,24 @@ export const flatService = {
         },
         (error) => {
           console.warn('Flats snapshot listener error, using fallback:', error);
-          callback(sampleUnits);
+          callback(isMasterCleared() ? [] : sampleUnits);
         }
       );
     } catch (error) {
       console.warn('Failed to subscribe to flats:', error);
-      callback(sampleUnits);
+      callback(isMasterCleared() ? [] : sampleUnits);
       return () => {};
+    }
+  },
+
+  // Delete flat from Firestore
+  deleteFlat: async (unitNumber: string): Promise<void> => {
+    try {
+      const flatRef = doc(db, FLATS_COLLECTION, unitNumber);
+      await deleteDoc(flatRef);
+    } catch (error) {
+      console.error('Error deleting flat:', error);
+      throw error;
     }
   },
 

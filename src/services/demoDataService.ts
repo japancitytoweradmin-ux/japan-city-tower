@@ -111,6 +111,12 @@ export const demoDataService = {
   // Seed Master Data (28 Flats & Members)
   seedMasterData: async (): Promise<void> => {
     try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('jct_master_cleared');
+      }
+      const masterStatusRef = doc(db, 'settings', 'masterStatus');
+      await setDoc(masterStatusRef, { isMasterCleared: false, updatedAt: new Date().toISOString() }, { merge: true });
+
       const batch = writeBatch(db);
 
       // Seed 28 Master Flats
@@ -372,9 +378,70 @@ export const demoDataService = {
     }
   },
 
-  // Auto-initialize master data if database is fresh
+  // Clear Master Members and Master Flats completely
+  clearMasterMembersAndFlats: async (actorName: string = 'Admin'): Promise<{ deletedMembersCount: number; deletedFlatsCount: number }> => {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('jct_master_cleared', 'true');
+      }
+      const statusRef = doc(db, 'settings', 'masterStatus');
+      await setDoc(statusRef, { isMasterCleared: true, clearedAt: new Date().toISOString() }, { merge: true });
+
+      let deletedMembersCount = 0;
+      let deletedFlatsCount = 0;
+
+      // 1. Delete all members
+      const membersSnap = await getDocs(collection(db, 'members'));
+      if (!membersSnap.empty) {
+        const batch = writeBatch(db);
+        membersSnap.docs.forEach((docSnap) => {
+          batch.delete(docSnap.ref);
+          deletedMembersCount++;
+        });
+        await batch.commit();
+      }
+
+      // 2. Delete all flats
+      const flatsSnap = await getDocs(collection(db, 'flats'));
+      if (!flatsSnap.empty) {
+        const batch = writeBatch(db);
+        flatsSnap.docs.forEach((docSnap) => {
+          batch.delete(docSnap.ref);
+          deletedFlatsCount++;
+        });
+        await batch.commit();
+      }
+
+      await auditService.logAction(
+        'DELETE',
+        'SETTINGS',
+        `CLEAR_MASTER_DATA: ${actorName} দ্বারা সকল ডিফল্ট ২৮টি ফ্ল্যাট ও ২৫টি সদস্য তথ্য পুরোপুরি মুছে ফেলা হয়েছে।`,
+        'usr-admin',
+        actorName,
+        'master-clear',
+        'ADMIN'
+      );
+
+      return { deletedMembersCount, deletedFlatsCount };
+    } catch (error) {
+      console.error('Error clearing master members and flats:', error);
+      throw error;
+    }
+  },
+
+  // Auto-initialize master data if database is fresh and master hasn't been cleared
   initializeDatabaseIfEmpty: async (): Promise<void> => {
     try {
+      if (typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true') {
+        return;
+      }
+      const masterStatusDoc = await getDoc(doc(db, 'settings', 'masterStatus'));
+      if (masterStatusDoc.exists() && masterStatusDoc.data()?.isMasterCleared === true) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('jct_master_cleared', 'true');
+        }
+        return;
+      }
       const flatsSnap = await getDocs(collection(db, 'flats'));
       if (flatsSnap.empty) {
         console.log('Initializing master data in Firestore...');

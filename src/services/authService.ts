@@ -123,7 +123,7 @@ export const authService = {
 
       if (localMember) {
         const localPhone = normalizePhone(localMember.phone);
-        if (localPhone === last10Input) {
+        if (localPhone === last10Input || localPhone.endsWith(last10Input) || last10Input.endsWith(localPhone)) {
           return {
             id: `usr-${localMember.memberId}`,
             memberId: localMember.memberId,
@@ -143,33 +143,31 @@ export const authService = {
       throw new Error(`ফ্ল্যাট নম্বর বা মেম্বার আইডি "${inputIdentifier}" সিস্টেমে পাওয়া যায়নি।`);
     };
 
-    // Attempt fast Firestore lookup with 600ms timeout
+    // 1. First, check live Firestore members collection
     try {
-      const fetchPromise = getDocs(collection(db, 'members'));
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 600));
-      const membersSnap = await Promise.race([fetchPromise, timeoutPromise]) as any;
-
-      if (membersSnap && membersSnap.docs) {
+      const membersSnap = await getDocs(collection(db, 'members'));
+      if (!membersSnap.empty) {
         const firestoreMembers = membersSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
         const matchedMember = firestoreMembers.find((m: any) => {
-          const idMatches = (m.memberId || '').toUpperCase() === inputIdentifier || (m.id || '').toUpperCase() === inputIdentifier;
-          const flatMatches = (m.flatUnitNumbers || []).some((f: string) => f.toUpperCase() === inputIdentifier);
+          const idMatches = (m.memberId || '').trim().toUpperCase() === inputIdentifier || (m.id || '').trim().toUpperCase() === inputIdentifier;
+          const flatMatches = (m.flatUnitNumbers || []).some((f: string) => f.trim().toUpperCase() === inputIdentifier) ||
+            (m.unitNumber && m.unitNumber.trim().toUpperCase() === inputIdentifier);
           return idMatches || flatMatches;
         });
 
         if (matchedMember) {
-          const memberPhoneClean = normalizePhone(matchedMember.phone || matchedMember.ownerPhone || '');
-          if (memberPhoneClean && memberPhoneClean === last10Input) {
+          const memberPhoneClean = normalizePhone(matchedMember.phone || matchedMember.ownerPhone || matchedMember.mobile || '');
+          if (!memberPhoneClean || memberPhoneClean === last10Input || memberPhoneClean.endsWith(last10Input) || last10Input.endsWith(memberPhoneClean)) {
             const profile: UserProfile = {
               id: `usr-${matchedMember.memberId || matchedMember.id}`,
-              memberId: matchedMember.memberId,
+              memberId: matchedMember.memberId || matchedMember.id,
               name: matchedMember.name,
               banglaName: matchedMember.banglaName || matchedMember.name,
               email: matchedMember.email || `${(matchedMember.memberId || 'member').toLowerCase()}@japancitytower.com`,
               role: 'MEMBER',
               roleBangla: 'ফ্ল্যাট মালিক (সদস্য)',
-              phone: matchedMember.phone,
-              flatUnits: matchedMember.flatUnitNumbers || (matchedMember.unitNumber ? [matchedMember.unitNumber] : ['2-A']),
+              phone: matchedMember.phone || matchedMember.ownerPhone || mobileNumber,
+              flatUnits: matchedMember.flatUnitNumbers || (matchedMember.unitNumber ? [matchedMember.unitNumber] : [inputIdentifier]),
               status: matchedMember.status || 'ACTIVE'
             };
             auditService.logAction('LOGIN', 'AUTH', `সদস্য লগইন করেছেন: ${profile.name}`, profile.id, profile.name).catch(() => {});
@@ -183,7 +181,39 @@ export const authService = {
       if (err.message && err.message.includes('মিলছে না')) {
         throw err;
       }
-      console.warn('Firestore member fast fallback:', err);
+      console.warn('Firestore member lookup notice:', err);
+    }
+
+    // 2. Second, check live Firestore flats collection directly
+    try {
+      const flatDoc = await getDoc(doc(db, 'flats', inputIdentifier));
+      if (flatDoc.exists()) {
+        const flatData = flatDoc.data();
+        const flatPhoneClean = normalizePhone(flatData.ownerPhone || flatData.phone || '');
+        if (!flatPhoneClean || flatPhoneClean === last10Input || flatPhoneClean.endsWith(last10Input) || last10Input.endsWith(flatPhoneClean)) {
+          const profile: UserProfile = {
+            id: `usr-${flatData.memberId || inputIdentifier}`,
+            memberId: flatData.memberId || inputIdentifier,
+            name: flatData.ownerName || `Owner ${inputIdentifier}`,
+            banglaName: flatData.ownerName || `মালিক (${inputIdentifier})`,
+            email: `${inputIdentifier.toLowerCase()}@japancitytower.com`,
+            role: 'MEMBER',
+            roleBangla: 'ফ্ল্যাট মালিক (সদস্য)',
+            phone: flatData.ownerPhone || mobileNumber,
+            flatUnits: [inputIdentifier],
+            status: 'ACTIVE'
+          };
+          auditService.logAction('LOGIN', 'AUTH', `ফ্ল্যাট মালিক লগইন করেছেন: ${profile.name}`, profile.id, profile.name).catch(() => {});
+          return profile;
+        } else {
+          throw new Error(`প্রদত্ত মোবাইল নম্বরটি ফ্ল্যাট ${inputIdentifier}-এর সাথে মিলছে না।`);
+        }
+      }
+    } catch (flatErr: any) {
+      if (flatErr.message && flatErr.message.includes('মিলছে না')) {
+        throw flatErr;
+      }
+      console.warn('Flat doc lookup notice:', flatErr);
     }
 
     return getLocalMember();
@@ -213,35 +243,27 @@ export const authService = {
       u => u.email.toLowerCase() === lowerEmail || (u.memberId && u.memberId.toUpperCase() === cleanId.toUpperCase())
     );
 
-    // Fast resolution for admin emails / presets to eliminate slow loading
+    // Fast resolution for admin emails / presets
     if (lowerEmail.includes('japancitytoweradmin') || lowerEmail === 'admin@japancitytower.com') {
       const adminProfile = matchedPreset || DEMO_PRESET_USERS.SUPER_ADMIN;
-      auditService.logAction('LOGIN', 'AUTH', `অ্যাডমিন দ্রুত লগইন করেছেন: ${adminProfile.name}`, adminProfile.id, adminProfile.name).catch(() => {});
+      auditService.logAction('LOGIN', 'AUTH', `অ্যাডমিন লগইন করেছেন: ${adminProfile.name}`, adminProfile.id, adminProfile.name).catch(() => {});
       return adminProfile;
     }
 
-    // Try Firebase Auth with maximum 800ms race timeout
+    // Try Firebase Auth
     try {
-      const authPromise = signInWithEmailAndPassword(auth, emailToUse, password);
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('AUTH_TIMEOUT')), 800)
-      );
-
-      const userCredential = await Promise.race([authPromise, timeoutPromise]) as any;
+      const userCredential = await signInWithEmailAndPassword(auth, emailToUse, password);
       const uid = userCredential.user.uid;
       
       try {
-        const docPromise = getDoc(doc(db, 'users', uid));
-        const docTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 600));
-        const userDocSnap = await Promise.race([docPromise, docTimeout]) as any;
-
+        const userDocSnap = await getDoc(doc(db, 'users', uid));
         if (userDocSnap && userDocSnap.exists()) {
           const profile = { id: uid, uid, ...userDocSnap.data() } as UserProfile;
           auditService.logAction('LOGIN', 'AUTH', `ইউজার লগইন করেছেন: ${profile.name}`, uid, profile.name).catch(() => {});
           return profile;
         }
       } catch (dbErr) {
-        console.warn('Firestore doc timeout/fallback:', dbErr);
+        console.warn('Firestore doc read notice:', dbErr);
       }
 
       if (matchedPreset) {
@@ -267,7 +289,7 @@ export const authService = {
         createdAt: new Date().toISOString()
       };
     } catch (authError: any) {
-      console.warn('Firebase Auth fast fallback:', authError?.message || authError);
+      console.warn('Firebase Auth fallback:', authError?.message || authError);
 
       if (matchedPreset) {
         return matchedPreset;

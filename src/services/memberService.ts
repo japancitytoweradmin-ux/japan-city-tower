@@ -14,8 +14,13 @@ import { Member } from '../types';
 import { sampleMembers } from '../data/mockData';
 import { flatService } from './flatService';
 import { auditService } from './auditService';
+import { deleteDoc } from 'firebase/firestore';
 
 const MEMBERS_COLLECTION = 'members';
+
+const isMasterCleared = (): boolean => {
+  return typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
+};
 
 export const memberService = {
   // Fetch all members
@@ -24,7 +29,7 @@ export const memberService = {
       const q = query(collection(db, MEMBERS_COLLECTION), orderBy('memberId', 'asc'));
       const snapshot = await getDocs(q);
       if (snapshot.empty) {
-        return sampleMembers;
+        return isMasterCleared() ? [] : sampleMembers;
       }
       return snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -32,7 +37,7 @@ export const memberService = {
       })) as Member[];
     } catch (error) {
       console.warn('Error loading members from Firestore, falling back to master sample data:', error);
-      return sampleMembers;
+      return isMasterCleared() ? [] : sampleMembers;
     }
   },
 
@@ -44,7 +49,7 @@ export const memberService = {
         q,
         (snapshot) => {
           if (snapshot.empty) {
-            callback(sampleMembers);
+            callback(isMasterCleared() ? [] : sampleMembers);
           } else {
             const members = snapshot.docs.map((doc) => ({
               id: doc.id,
@@ -55,12 +60,12 @@ export const memberService = {
         },
         (error) => {
           console.warn('Members snapshot listener error:', error);
-          callback(sampleMembers);
+          callback(isMasterCleared() ? [] : sampleMembers);
         }
       );
     } catch (error) {
       console.warn('Failed to subscribe to members:', error);
-      callback(sampleMembers);
+      callback(isMasterCleared() ? [] : sampleMembers);
       return () => {};
     }
   },
@@ -239,6 +244,25 @@ export const memberService = {
       }, { merge: true });
     } catch (error) {
       console.error('Error upserting member:', error);
+      throw error;
+    }
+  },
+
+  // Delete single member from Firestore
+  deleteMember: async (memberId: string): Promise<void> => {
+    try {
+      const memberRef = doc(db, MEMBERS_COLLECTION, memberId);
+      await deleteDoc(memberRef);
+      await auditService.logAction(
+        'DELETE',
+        'MEMBERS',
+        `সদস্য ${memberId} ডেটাবেজ থেকে মুছে ফেলা হয়েছে`,
+        'usr-admin',
+        'Admin',
+        memberId
+      );
+    } catch (error) {
+      console.error('Error deleting member from Firestore:', error);
       throw error;
     }
   }

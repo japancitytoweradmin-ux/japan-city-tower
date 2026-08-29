@@ -48,21 +48,31 @@ export const receiptService = {
     }
   },
 
-  getReceiptsByMember: async (memberId: string): Promise<ReceiptRecord[]> => {
+  getReceiptsByMember: async (memberId: string, flatUnits?: string[]): Promise<ReceiptRecord[]> => {
     try {
-      const q = query(
-        collection(db, RECEIPTS_COLLECTION),
-        where('memberId', '==', memberId),
-        orderBy('paymentDate', 'desc')
-      );
-      const snapshot = await getDocs(q);
+      const snapshot = await getDocs(collection(db, RECEIPTS_COLLECTION));
       if (snapshot.empty) {
         return [];
       }
-      return snapshot.docs.map((doc) => ({
+      let list = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data()
       })) as ReceiptRecord[];
+      
+      list = list.filter(r => !r.isDeleted);
+      const normMemberId = (memberId || '').trim().toUpperCase();
+      const normFlats = (flatUnits || []).map(f => f.trim().toUpperCase());
+
+      list = list.filter(r => {
+        const rMemberId = (r.memberId || '').trim().toUpperCase();
+        const rFlat = (r.flatUnitNumber || r.flatId || '').trim().toUpperCase();
+        const matchMember = Boolean(normMemberId && rMemberId === normMemberId);
+        const matchFlat = Boolean(rFlat && normFlats.includes(rFlat));
+        return matchMember || matchFlat;
+      });
+
+      list.sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+      return list;
     } catch (error) {
       console.warn('Error loading member receipts:', error);
       return [];
@@ -71,7 +81,7 @@ export const receiptService = {
 
   subscribeToReceipts: (callback: (receipts: ReceiptRecord[]) => void) => {
     try {
-      const q = query(collection(db, RECEIPTS_COLLECTION), orderBy('paymentDate', 'desc'));
+      const q = query(collection(db, RECEIPTS_COLLECTION));
       return onSnapshot(
         q,
         (snapshot) => {
@@ -83,6 +93,7 @@ export const receiptService = {
               ...doc.data()
             })) as ReceiptRecord[];
             receipts = receipts.filter(r => !r.isDeleted);
+            receipts.sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
             callback(receipts);
           }
         },
@@ -98,13 +109,13 @@ export const receiptService = {
     }
   },
 
-  subscribeToMemberReceipts: (memberId: string, callback: (receipts: ReceiptRecord[]) => void) => {
+  subscribeToMemberReceipts: (
+    memberId: string, 
+    callback: (receipts: ReceiptRecord[]) => void, 
+    flatUnits?: string[]
+  ) => {
     try {
-      const q = query(
-        collection(db, RECEIPTS_COLLECTION),
-        where('memberId', '==', memberId),
-        orderBy('paymentDate', 'desc')
-      );
+      const q = query(collection(db, RECEIPTS_COLLECTION));
       return onSnapshot(
         q,
         (snapshot) => {
@@ -116,6 +127,19 @@ export const receiptService = {
               ...doc.data()
             })) as ReceiptRecord[];
             receipts = receipts.filter(r => !r.isDeleted);
+            
+            const normMemberId = (memberId || '').trim().toUpperCase();
+            const normFlats = (flatUnits || []).map(f => f.trim().toUpperCase());
+
+            receipts = receipts.filter(r => {
+              const rMemberId = (r.memberId || '').trim().toUpperCase();
+              const rFlat = (r.flatUnitNumber || r.flatId || '').trim().toUpperCase();
+              const matchMember = Boolean(normMemberId && rMemberId === normMemberId);
+              const matchFlat = Boolean(rFlat && normFlats.includes(rFlat));
+              return matchMember || matchFlat;
+            });
+
+            receipts.sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
             callback(receipts);
           }
         },

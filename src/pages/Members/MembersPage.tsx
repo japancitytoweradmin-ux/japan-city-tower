@@ -31,6 +31,7 @@ import { memberService } from '../../services/memberService';
 import { flatService } from '../../services/flatService';
 import { paymentService } from '../../services/paymentService';
 import { expenseService } from '../../services/expenseService';
+import { demoDataService } from '../../services/demoDataService';
 import { buildingSettingsService } from '../../services/buildingSettingsService';
 import { calculateDualBilling, isKhalilurMember } from '../../utils/billingCalculator';
 import { useToast } from '../../components/common/Toast';
@@ -68,7 +69,7 @@ export const MembersPage: React.FC<MembersPageProps> = ({ onNavigateTab }) => {
   const [formBanglaName, setFormBanglaName] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formEmail, setFormEmail] = useState('');
-  const [formType, setFormType] = useState<'INDIVIDUAL' | 'COMPANY' | 'PROPERTY_OWNER' | 'COMMERCIAL'>('INDIVIDUAL');
+  const [formType, setFormType] = useState<'INDIVIDUAL' | 'COMPANY' | 'PROPERTY_OWNER' | 'COMMERCIAL' | 'FLAT_OWNER'>('INDIVIDUAL');
   const [formFlats, setFormFlats] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [defaultBillAmount, setDefaultBillAmount] = useState<number>(1997);
@@ -191,6 +192,29 @@ export const MembersPage: React.FC<MembersPageProps> = ({ onNavigateTab }) => {
       showToast(`সদস্য ${member.name}-এর স্ট্যাটাস ${newStatus === 'ACTIVE' ? 'সক্রিয় (Active)' : 'নিষ্ক্রিয় (Inactive)'} করা হয়েছে`, 'info');
     } catch (err: any) {
       showToast('Error: ' + (err.message || 'Status toggle failed'), 'error');
+    }
+  };
+
+  const handleDeleteMember = async (member: Member) => {
+    if (window.confirm(`আপনি কি নিশ্চিত যে সদস্য "${member.name}" (${member.memberId}) কে ডাটাবেজ থেকে মুছে ফেলতে চান?`)) {
+      try {
+        await memberService.deleteMember(member.memberId || member.id);
+        showToast(`সদস্য "${member.name}" ডাটাবেজ থেকে মুছে ফেলা হয়েছে`, 'success');
+      } catch (err: any) {
+        showToast('সদস্য মুছে ফেলতে সমস্যা হয়েছে: ' + (err.message || 'Error'), 'error');
+      }
+    }
+  };
+
+  const handleClearMasterData = async () => {
+    if (window.confirm('সতর্কতা: আপনি কি সকল ডিফল্ট ২৮টি ফ্ল্যাট এবং ২৫টি সদস্য ডাটা মুছে ফেলে নতুনভাবে ফায়ারবেসে তথ্য যুক্ত করতে চান?')) {
+      try {
+        const res = await demoDataService.clearMasterMembersAndFlats('Admin');
+        showToast(`সকল ডিফল্ট সদস্য (${res.deletedMembersCount} জন) ও ফ্ল্যাট (${res.deletedFlatsCount} টি) মুছে ফেলা হয়েছে। এখন আপনি নতুনভাবে এন্ট্রি দিতে পারবেন!`, 'success');
+        setTimeout(() => window.location.reload(), 1000);
+      } catch (err: any) {
+        showToast('ডিফল্ট ডাটা মুছে ফেলতে সমস্যা হয়েছে: ' + (err.message || 'Error'), 'error');
+      }
     }
   };
 
@@ -317,14 +341,26 @@ export const MembersPage: React.FC<MembersPageProps> = ({ onNavigateTab }) => {
         title="সদস্য মাস্টার ডেটা ব্যবস্থাপনা (Member Master Data Management)"
         subtitle="জাপান সিটি টাওয়ার ফ্ল্যাট মালিকদের অ্যাকাউন্টস, মাল্টি-ফ্ল্যাট সংযোগ ও প্রোফাইল সেটিংস"
         actionButton={
-          <button
-            type="button"
-            onClick={handleOpenAdd}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4 text-amber-400" />
-            <span>নতুন সদস্য রেজিস্টার করুন</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleClearMasterData}
+              className="px-3 py-2 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60 font-bold text-xs rounded-xl border border-rose-200 dark:border-rose-800 flex items-center gap-1.5 transition-all cursor-pointer"
+              title="ডিফল্ট ২৮টি ফ্ল্যাট ও ২৫টি সদস্য তথ্য পুরোপুরি মুছে নতুন এন্ট্রি দিন"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>ডিফল্ট মেম্বার/ফ্ল্যাট মুছুন</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenAdd}
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4 text-amber-400" />
+              <span>নতুন সদস্য রেজিস্টার করুন</span>
+            </button>
+          </div>
         }
       />
 
@@ -512,6 +548,15 @@ export const MembersPage: React.FC<MembersPageProps> = ({ onNavigateTab }) => {
                         >
                           <MessageSquare className="w-4 h-4" />
                         </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMember(member)}
+                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors cursor-pointer"
+                          title="সদস্য মুছে ফেলুন"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -604,6 +649,14 @@ export const MembersPage: React.FC<MembersPageProps> = ({ onNavigateTab }) => {
                     className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"
                   >
                     <MessageSquare className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteMember(member)}
+                    className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
+                    title="সদস্য মুছে ফেলুন"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>

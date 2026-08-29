@@ -152,7 +152,7 @@ export interface Member {
   memberId: string; // e.g. "JCT-006"
   name: string;
   banglaName?: string;
-  memberType: 'INDIVIDUAL' | 'COMPANY' | 'PROPERTY_OWNER' | 'COMMERCIAL';
+  memberType: 'INDIVIDUAL' | 'COMPANY' | 'PROPERTY_OWNER' | 'COMMERCIAL' | 'FLAT_OWNER';
   memberTypeBangla: string;
   phone: string;
   email?: string;
@@ -161,11 +161,11 @@ export interface Member {
   flatUnitNumbers: string[]; // e.g. ["6-B", "7-B", "8-B"]
   flatIds?: string[];
   totalUnits: number;
-  totalBill: number;
-  totalPaid: number;
-  totalDue: number;
+  totalBill?: number;
+  totalPaid?: number;
+  totalDue?: number;
   status: 'ACTIVE' | 'INACTIVE';
-  joinedDate: string;
+  joinedDate?: string;
   avatarUrl?: string;
   isMasterData?: boolean; // Master data flag: Protected from demo clear
   isDemo?: boolean;
