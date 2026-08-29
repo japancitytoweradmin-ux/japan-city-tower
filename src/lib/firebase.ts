@@ -43,9 +43,14 @@ export function getActiveFirebaseConfig(): Record<string, string> {
 
 const activeConfig = getActiveFirebaseConfig();
 
-// Initialize the default system-level app to communicate with the shared AI Studio DB
+// Check if running in AI Studio dev sandbox vs external host (e.g. Netlify)
+const isExternalHost = typeof window !== 'undefined' && !window.location.hostname.includes('run.app') && !window.location.hostname.includes('localhost') && window.location.hostname !== '127.0.0.1';
+
+// Initialize the default system-level app to communicate with the shared DB
 export const defaultApp = getApps().find(a => a.name === 'default-system-app') || initializeApp(defaultFirebaseConfig, 'default-system-app');
-export const defaultDb = getFirestore(defaultApp, defaultFirebaseConfig.firestoreDatabaseId);
+export const defaultDb = (!isExternalHost && defaultFirebaseConfig.firestoreDatabaseId && defaultFirebaseConfig.firestoreDatabaseId !== '(default)') 
+  ? getFirestore(defaultApp, defaultFirebaseConfig.firestoreDatabaseId)
+  : getFirestore(defaultApp);
 
 // Initialize Firebase App instance safely for active use
 let app: FirebaseApp;
@@ -62,10 +67,15 @@ export const auth: Auth = getAuth(app);
 // Initialize Storage
 export const storage: FirebaseStorage = getStorage(app);
 
-// Initialize Firestore with specific databaseId if configured, or default
-const databaseId = activeConfig.firestoreDatabaseId && activeConfig.firestoreDatabaseId !== '(default)'
-  ? activeConfig.firestoreDatabaseId
-  : undefined;
+// Determine effective database ID safely
+const getEffectiveDatabaseId = (): string | undefined => {
+  if (activeConfig.firestoreDatabaseId && activeConfig.firestoreDatabaseId !== '(default)' && !isExternalHost) {
+    return activeConfig.firestoreDatabaseId;
+  }
+  return undefined;
+};
+
+const databaseId = getEffectiveDatabaseId();
 
 export const db: Firestore = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
 
