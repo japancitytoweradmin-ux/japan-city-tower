@@ -22,20 +22,25 @@ import {
 import { PageHeader } from '../../components/common/PageHeader';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
-import { FlatUnit, UnitType, PaymentStatus, Member } from '../../types';
-import { sampleUnits, sampleMembers } from '../../data/mockData';
+import { FlatUnit, UnitType, PaymentStatus, Member, ExpenseItem } from '../../types';
+import { sampleUnits, sampleMembers, sampleExpensesJune2025 } from '../../data/mockData';
 import { flatService } from '../../services/flatService';
 import { memberService } from '../../services/memberService';
+import { expenseService } from '../../services/expenseService';
 import { buildingSettingsService } from '../../services/buildingSettingsService';
 import { useToast } from '../../components/common/Toast';
 import { useTranslation } from '../../i18n/LanguageContext';
+import { useBillingPeriod } from '../../contexts/BillingPeriodContext';
+import { calculateDualBilling, isKhalilurMember } from '../../utils/billingCalculator';
 
 export const FlatsPage: React.FC = () => {
   const { showToast } = useToast();
   const { t, formatNumber, formatCurrency, isBangla } = useTranslation();
+  const { billingPeriodId, periodLabel } = useBillingPeriod();
 
   const [units, setUnits] = useState<FlatUnit[]>(sampleUnits);
   const [members, setMembers] = useState<Member[]>(sampleMembers);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFloor, setSelectedFloor] = useState<string>('ALL');
@@ -87,14 +92,38 @@ export const FlatsPage: React.FC = () => {
       setIsLoading(false);
     });
 
+    const unsubscribeExpenses = expenseService.subscribeToExpenses((loadedExp) => {
+      setExpenses(loadedExp);
+    }, billingPeriodId);
+
     const fetchMembers = async () => {
       const loadedMembers = await memberService.getAllMembers();
       setMembers(loadedMembers);
     };
     fetchMembers();
 
-    return () => unsubscribeFlats();
-  }, []);
+    return () => {
+      unsubscribeFlats();
+      unsubscribeExpenses();
+    };
+  }, [billingPeriodId]);
+
+  // Compute period dual billing metrics
+  const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
+  const effectiveExp = periodExp.length > 0 ? periodExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
+  const dualCalc = calculateDualBilling(effectiveExp, units.length || 28);
+  const defaultBillAmountNum = parseFloat(defaultBillAmount) || 1997;
+
+  const getFlatMonthlyBill = (unit: FlatUnit): number => {
+    const isKh = isKhalilurMember(unit.memberId, unit.unitNumber);
+    if (isKh) {
+      return dualCalc.khalilur.perFlatBill || defaultBillAmountNum;
+    }
+    if (dualCalc.totalExpense > 0) {
+      return dualCalc.regularRoundedPerFlat;
+    }
+    return unit.monthlyBaseBill || defaultBillAmountNum;
+  };
 
   const filteredUnits = units.filter((unit) => {
     const matchesSearch =
@@ -290,7 +319,7 @@ export const FlatsPage: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              ফ্ল্যাটের মাস্টার রেকর্ডগুলো স্থায়ী। কোনো ফ্ল্যাট আনলিংক করা হলে ডাটা ডিলিট হবে না, শুধু আনঅ্যাসাইনড হবে।
+              ফ্ল্যাটের মাস্টার রেকর্ডগুলো স্থায়ী। সিজন ({periodLabel}): মোট খরচ {formatCurrency(dualCalc.totalExpense)} • সুষম মাসিক বিল: {formatCurrency(dualCalc.totalExpense > 0 ? dualCalc.regularRoundedPerFlat : defaultBillAmountNum)}/ফ্ল্যাট।
             </p>
           </div>
         </div>
@@ -401,7 +430,7 @@ export const FlatsPage: React.FC = () => {
                     </p>
                   </td>
                   <td className="p-3.5 text-right font-medium text-slate-700 dark:text-slate-300">
-                    {formatCurrency(unit.monthlyBaseBill)}
+                    <span className="font-bold">{formatCurrency(getFlatMonthlyBill(unit))}</span>
                   </td>
                   <td className="p-3.5 text-right font-bold text-rose-600 dark:text-rose-400">
                     {formatCurrency(unit.currentDue)}
@@ -493,7 +522,7 @@ export const FlatsPage: React.FC = () => {
                 <span className="font-mono text-slate-400 ml-1">({unit.memberId})</span>
               </div>
               <div className="pt-1.5 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between font-bold">
-                <span className="text-slate-600 dark:text-slate-400">মাসিক বিল: {formatCurrency(unit.monthlyBaseBill)}</span>
+                <span className="text-slate-600 dark:text-slate-400">মাসিক বিল: {formatCurrency(getFlatMonthlyBill(unit))}</span>
                 <span className={unit.currentDue > 0 ? 'text-rose-600' : 'text-emerald-700'}>
                   {unit.currentDue > 0 ? `বকেয়া: ${formatCurrency(unit.currentDue)}` : 'পরিশোধিত'}
                 </span>

@@ -252,7 +252,14 @@ export const MembersPage: React.FC<MembersPageProps> = ({ onNavigateTab }) => {
         });
         showToast(`সদস্য ${formName}-এর তথ্য সফলভাবে এডিট করা হয়েছে`, 'success');
       } else {
-        const generatedId = `JCT-0${members.length + 1}`;
+        const existingNums = members.map(m => {
+          const match = m.memberId.match(/\d+/);
+          return match ? parseInt(match[0], 10) : 0;
+        });
+        const maxNum = existingNums.length > 0 ? Math.max(...existingNums) : 0;
+        const nextNum = maxNum + 1;
+        const generatedId = `JCT-${String(nextNum).padStart(3, '0')}`;
+
         const newMember: Member = {
           id: `mem-${Date.now()}`,
           memberId: generatedId,

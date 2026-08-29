@@ -101,11 +101,13 @@ export const flatService = {
   // Update a flat
   updateFlat: async (flatId: string, updates: Partial<FlatUnit>): Promise<void> => {
     try {
+      const existing = await flatService.getFlatById(flatId);
       const flatRef = doc(db, FLATS_COLLECTION, flatId);
-      await updateDoc(flatRef, {
+      await setDoc(flatRef, {
+        ...(existing || {}),
         ...updates,
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
     } catch (error) {
       console.error('Error updating flat in Firestore:', error);
       throw error;

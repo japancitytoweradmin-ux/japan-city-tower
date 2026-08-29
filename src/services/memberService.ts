@@ -125,11 +125,13 @@ export const memberService = {
   // Update member
   updateMember: async (memberId: string, updates: Partial<Member>): Promise<void> => {
     try {
+      const existing = await memberService.getMemberById(memberId);
       const memberRef = doc(db, MEMBERS_COLLECTION, memberId);
-      await updateDoc(memberRef, {
+      await setDoc(memberRef, {
+        ...(existing || {}),
         ...updates,
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
 
       // Retrieve full member to sync flats
       const fullMember = await memberService.getMemberById(memberId);
@@ -155,8 +157,10 @@ export const memberService = {
   toggleMemberStatus: async (memberId: string, currentStatus: 'ACTIVE' | 'INACTIVE', updatedBy = 'Admin'): Promise<'ACTIVE' | 'INACTIVE'> => {
     try {
       const newStatus = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+      const existing = await memberService.getMemberById(memberId);
       const memberRef = doc(db, MEMBERS_COLLECTION, memberId);
       await setDoc(memberRef, {
+        ...(existing || {}),
         status: newStatus,
         updatedAt: new Date().toISOString()
       }, { merge: true });
