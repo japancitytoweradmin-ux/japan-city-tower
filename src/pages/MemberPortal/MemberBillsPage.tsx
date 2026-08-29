@@ -92,8 +92,8 @@ export const MemberBillsPage: React.FC<MemberBillsPageProps> = ({
   );
 
   const totalBill = selectedFlatTab === 'ALL'
-    ? (isKh ? dualCalc.khalilur.totalBill : filteredFlats.reduce((sum, f) => sum + (f.monthlyBaseBill || perFlatBill), 0))
-    : (isKh ? dualCalc.khalilur.perFlatBill : filteredFlats.reduce((sum, f) => sum + (f.monthlyBaseBill || perFlatBill), 0));
+    ? (isKh ? (dualCalc.totalExpense > 0 ? dualCalc.khalilur.totalBill : filteredFlats.length * 1997) : filteredFlats.length * perFlatBill)
+    : (isKh ? (dualCalc.totalExpense > 0 ? dualCalc.khalilur.perFlatBill : 1997) : perFlatBill);
 
   const totalPaid = payments
     .filter(p => selectedFlatTab === 'ALL' || p.flatUnitNumber === selectedFlatTab)

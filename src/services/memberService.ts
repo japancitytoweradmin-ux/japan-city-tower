@@ -22,6 +22,31 @@ const isMasterCleared = (): boolean => {
   return typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
 };
 
+const mergeMembersWithMaster = (firestoreMembers: Member[]): Member[] => {
+  if (isMasterCleared()) {
+    return firestoreMembers.filter(m => !m.isDeleted);
+  }
+  const map = new Map<string, Member>();
+  sampleMembers.forEach(m => {
+    map.set(m.memberId, { ...m });
+  });
+  firestoreMembers.forEach(fm => {
+    if (fm.isDeleted) {
+      map.delete(fm.memberId);
+      if (fm.id) map.delete(fm.id);
+    } else {
+      const key = fm.memberId || fm.id;
+      const existing = map.get(key) || {};
+      map.set(key, { ...existing, ...fm, id: fm.id || key });
+    }
+  });
+  return Array.from(map.values()).sort((a, b) => {
+    const numA = parseInt(a.memberId.replace(/\D/g, ''), 10) || 0;
+    const numB = parseInt(b.memberId.replace(/\D/g, ''), 10) || 0;
+    return numA - numB;
+  });
+};
+
 export const memberService = {
   // Fetch all members
   getAllMembers: async (): Promise<Member[]> => {
@@ -31,10 +56,11 @@ export const memberService = {
       if (snapshot.empty) {
         return isMasterCleared() ? [] : sampleMembers;
       }
-      return snapshot.docs.map((doc) => ({
+      const firestoreMembers = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data()
       })) as Member[];
+      return mergeMembersWithMaster(firestoreMembers);
     } catch (error) {
       console.warn('Error loading members from Firestore, falling back to master sample data:', error);
       return isMasterCleared() ? [] : sampleMembers;
@@ -51,11 +77,11 @@ export const memberService = {
           if (snapshot.empty) {
             callback(isMasterCleared() ? [] : sampleMembers);
           } else {
-            const members = snapshot.docs.map((doc) => ({
+            const firestoreMembers = snapshot.docs.map((doc) => ({
               id: doc.id,
               ...doc.data()
             })) as Member[];
-            callback(members);
+            callback(mergeMembersWithMaster(firestoreMembers));
           }
         },
         (error) => {
@@ -301,7 +327,11 @@ export const memberService = {
   deleteMember: async (memberId: string): Promise<void> => {
     try {
       const memberRef = doc(db, MEMBERS_COLLECTION, memberId);
-      await deleteDoc(memberRef);
+      await setDoc(memberRef, {
+        memberId,
+        isDeleted: true,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
       await auditService.logAction(
         'DELETE',
         'MEMBERS',

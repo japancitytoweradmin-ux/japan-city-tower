@@ -142,6 +142,7 @@ export interface FlatUnit {
   notes?: string;
   isMasterData?: boolean; // Master data flag: Protected from demo clear
   isDemo?: boolean;
+  isDeleted?: boolean;
   ownershipHistory?: OwnershipHistoryRecord[];
   createdAt?: string;
   updatedAt?: string;
@@ -169,6 +170,7 @@ export interface Member {
   avatarUrl?: string;
   isMasterData?: boolean; // Master data flag: Protected from demo clear
   isDemo?: boolean;
+  isDeleted?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

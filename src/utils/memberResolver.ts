@@ -168,18 +168,24 @@ export const calculateMemberBillSummary = (
 ): MemberBillSummary => {
   const isKh = isKhalilurMember(activeMember.memberId);
   const dualCalc = calculateDualBilling(expenses, totalBuildingFlats || 28);
-  const perFlatBill = dualCalc.regularRoundedPerFlat;
-
+  
   const totalUnits = memberFlats.length || activeMember.flatUnitNumbers?.length || 1;
+  const perFlatBill = isKh
+    ? (dualCalc.totalExpense > 0 ? dualCalc.khalilur.perFlatBill : 1997)
+    : (dualCalc.totalExpense > 0 ? dualCalc.regularRoundedPerFlat : 1997);
 
   let totalBill = 0;
   if (isKh) {
-    totalBill = dualCalc.khalilur.totalBill;
+    totalBill = dualCalc.totalExpense > 0 ? dualCalc.khalilur.totalBill : (totalUnits * 1997);
   } else {
-    totalBill = memberFlats.reduce((sum, f) => {
-      const base = f.monthlyBaseBill && f.monthlyBaseBill > 0 ? f.monthlyBaseBill : perFlatBill;
-      return sum + base;
-    }, 0);
+    if (dualCalc.totalExpense > 0) {
+      totalBill = totalUnits * dualCalc.regularRoundedPerFlat;
+    } else {
+      totalBill = memberFlats.reduce((sum, f) => {
+        const base = f.monthlyBaseBill && f.monthlyBaseBill > 0 ? f.monthlyBaseBill : 1997;
+        return sum + base;
+      }, 0);
+    }
   }
 
   const totalPaid = payments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);

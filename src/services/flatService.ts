@@ -21,6 +21,30 @@ const isMasterCleared = (): boolean => {
   return typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
 };
 
+const mergeFlatsWithMaster = (firestoreFlats: FlatUnit[]): FlatUnit[] => {
+  if (isMasterCleared()) {
+    return firestoreFlats.filter(f => !f.isDeleted);
+  }
+  const map = new Map<string, FlatUnit>();
+  sampleUnits.forEach(u => {
+    map.set(u.unitNumber, { ...u });
+  });
+  firestoreFlats.forEach(ff => {
+    if (ff.isDeleted) {
+      map.delete(ff.unitNumber);
+      if (ff.id) map.delete(ff.id);
+    } else {
+      const key = ff.unitNumber || ff.id;
+      const existing = map.get(key) || {};
+      map.set(key, { ...existing, ...ff, id: ff.id || key });
+    }
+  });
+  return Array.from(map.values()).sort((a, b) => {
+    if (a.floor !== b.floor) return a.floor - b.floor;
+    return a.unitNumber.localeCompare(b.unitNumber);
+  });
+};
+
 export const flatService = {
   // Fetch all flats
   getAllFlats: async (): Promise<FlatUnit[]> => {
@@ -30,10 +54,11 @@ export const flatService = {
       if (snapshot.empty) {
         return isMasterCleared() ? [] : sampleUnits;
       }
-      return snapshot.docs.map((doc) => ({
+      const firestoreFlats = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data()
       })) as FlatUnit[];
+      return mergeFlatsWithMaster(firestoreFlats);
     } catch (error) {
       console.warn('Error loading flats from Firestore, falling back to initial master data:', error);
       return isMasterCleared() ? [] : sampleUnits;
@@ -46,7 +71,9 @@ export const flatService = {
       const docRef = doc(db, FLATS_COLLECTION, unitNumber);
       const snap = await getDoc(docRef);
       if (snap.exists()) {
-        return { id: snap.id, ...snap.data() } as FlatUnit;
+        const data = { id: snap.id, ...snap.data() } as FlatUnit;
+        if (data.isDeleted) return null;
+        return data;
       }
       if (isMasterCleared()) return null;
       const local = sampleUnits.find(u => u.unitNumber === unitNumber || u.id === unitNumber);
@@ -68,11 +95,11 @@ export const flatService = {
           if (snapshot.empty) {
             callback(isMasterCleared() ? [] : sampleUnits);
           } else {
-            const flats = snapshot.docs.map((doc) => ({
+            const firestoreFlats = snapshot.docs.map((doc) => ({
               id: doc.id,
               ...doc.data()
             })) as FlatUnit[];
-            callback(flats);
+            callback(mergeFlatsWithMaster(firestoreFlats));
           }
         },
         (error) => {
@@ -91,7 +118,11 @@ export const flatService = {
   deleteFlat: async (unitNumber: string): Promise<void> => {
     try {
       const flatRef = doc(db, FLATS_COLLECTION, unitNumber);
-      await deleteDoc(flatRef);
+      await setDoc(flatRef, {
+        unitNumber,
+        isDeleted: true,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
     } catch (error) {
       console.error('Error deleting flat:', error);
       throw error;
