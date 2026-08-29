@@ -121,10 +121,14 @@ export const SettingsPage: React.FC = () => {
   const [summary, setSummary] = useState<DemoDataSummary | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [isClearingDemo, setIsClearingDemo] = useState(false);
+  const [isClearingEverything, setIsClearingEverything] = useState(false);
   const [isSeedingDemo, setIsSeedingDemo] = useState(false);
   const [isSeedingMaster, setIsSeedingMaster] = useState(false);
+  const [isSeedingFull, setIsSeedingFull] = useState(false);
   const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
+  const [showClearEverythingModal, setShowClearEverythingModal] = useState(false);
   const [clearDemoConfirmText, setClearDemoConfirmText] = useState('');
+  const [clearEverythingConfirmText, setClearEverythingConfirmText] = useState('');
 
   // Load Settings from Firestore
   useEffect(() => {
@@ -390,6 +394,45 @@ export const SettingsPage: React.FC = () => {
       showToast('পাসওয়ার্ড পরিবর্তনে ব্যর্থ: ' + (err.message || 'Error'), 'error');
     } finally {
       setIsChangingPassword(false);
+    }
+  };
+
+  // 1-Click Complete Factory Reset (Deletes Members, Flats, Transactions, Bills, Receipts)
+  const handleClearEverything = async () => {
+    if (clearEverythingConfirmText.trim() !== 'DELETE ALL') {
+      showToast('অনুগ্রহ করে নিশ্চিত করতে "DELETE ALL" টাইপ করুন', 'warning');
+      return;
+    }
+
+    setIsClearingEverything(true);
+    try {
+      const result = await demoDataService.clearAllDatabaseData('Admin');
+      showToast(`সফলভাবে সমস্ত সদস্য (${result.deletedMembersCount} জন), ফ্ল্যাট (${result.deletedFlatsCount} টি) ও ডেমো লেনদেন মুছে ডেটাবেজ সম্পূর্ণ খালি করা হয়েছে!`, 'success');
+      setShowClearEverythingModal(false);
+      setClearEverythingConfirmText('');
+      await loadSummary();
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (err: any) {
+      showToast('সম্পূর্ণ ডেটা মোছাতে সমস্যা হয়েছে: ' + (err.message || 'Error'), 'error');
+    } finally {
+      setIsClearingEverything(false);
+    }
+  };
+
+  // Seed Full Database (Master Flats & Members + All Transactions)
+  const handleSeedFullDatabase = async () => {
+    setIsSeedingFull(true);
+    try {
+      await demoDataService.seedFullDatabase();
+      showToast('২৮টি ফ্ল্যাট, ২৫টি সদস্য ও সকল ডেমো লেনদেন সফলভাবে সিড করা হয়েছে', 'success');
+      await loadSummary();
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (err: any) {
+      showToast('ডেটাবেজ সিডিংয়ে সমস্যা হয়েছে: ' + (err.message || 'Error'), 'error');
+    } finally {
+      setIsSeedingFull(false);
     }
   };
 
@@ -1160,24 +1203,25 @@ export const SettingsPage: React.FC = () => {
         </form>
       )}
 
-      {/* TAB 5: DEMO & DATA PROTECTION */}
+      {/* TAB 6: DEMO & DATA PROTECTION (UNIFIED DATABASE CONTROL) */}
       {activeTab === 'demo' && (
         <div className="bg-slate-900 text-white rounded-3xl border border-slate-800 p-6 shadow-xl space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
-                <Database className="w-5 h-5" />
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                <Database className="w-6 h-6" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold text-white">ডেমো ও মাস্টার ডেটা নিরাপত্তা কেন্দ্র</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Firestore Active
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-bold text-white">ডেটাবেজ ও ডেমো ডেটা নিয়ন্ত্রণ কেন্দ্র</h3>
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Firestore Live
                   </span>
                 </div>
-                <p className="text-xs text-slate-400">
-                  ২৮টি ফ্ল্যাট ও স্থায়ী সদস্যের মাস্টার ডেটা সুরক্ষিত; ডেমো ট্রানজেকশন ক্লিয়ার করলেও মাস্টার রেকর্ড অক্ষত থাকবে।
+                <p className="text-xs text-slate-400 mt-0.5">
+                  একটি সমন্বিত প্যানেল থেকে সমস্ত সদস্য, ফ্ল্যাট ও ডেমো হিসাব নিয়ন্ত্রণ ও এক ক্লিকে সম্পূর্ণ পরিষ্কার করার ব্যবস্থা।
                 </p>
               </div>
             </div>
@@ -1186,157 +1230,254 @@ export const SettingsPage: React.FC = () => {
               type="button"
               onClick={loadSummary}
               disabled={isLoadingSummary}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto transition-colors cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-2 self-start sm:self-auto transition-colors cursor-pointer border border-slate-700 shadow-xs"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoadingSummary ? 'animate-spin' : ''}`} />
               <span>স্ট্যাটাস রিফ্রেশ</span>
             </button>
           </div>
 
-          {/* Master vs Demo Comparison */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Master Data Protection */}
-            <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3.5 flex flex-col justify-between">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sky-400 font-bold text-sm">
-                    <ShieldCheck className="w-4 h-4" />
-                    <h4>স্থায়ী মাস্টার ডেটা (Master Records)</h4>
-                  </div>
-                  <span className="text-[10px] text-sky-400/90 bg-sky-400/10 border border-sky-400/20 px-2 py-0.5 rounded-md font-semibold">
-                    isMasterData: true
-                  </span>
+          {/* Unified Live Database Metrics Grid (All in 1 Grid) */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-amber-400" />
+                <span>বর্তমান ডেটাবেজের রিয়েল-টাইম রেকর্ড পরিসংখ্যান</span>
+              </span>
+              <span className="text-[11px] text-slate-400">
+                {summary && summary.masterFlatsCount === 0 && summary.masterMembersCount === 0 
+                  ? 'ডেটাবেজ সম্পূর্ণ খালি (০ ফ্ল্যাট / ০ সদস্য)' 
+                  : 'সক্রিয় রেকর্ড সংরক্ষিত'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+              {/* Members */}
+              <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-center flex flex-col justify-between">
+                <div className="text-slate-400 text-[11px] flex items-center justify-center gap-1">
+                  <Users className="w-3 h-3 text-sky-400" />
+                  <span>সদস্য</span>
                 </div>
-
-                <div className="p-2.5 bg-sky-950/40 border border-sky-800/40 rounded-xl text-xs text-sky-200/90">
-                  “এই রেকর্ডগুলো বিল্ডিংয়ের স্থায়ী মাস্টার ডেটা। এগুলো ডেমো ক্লিয়ারেন্স দিয়ে মোছা সম্ভব নয়।”
+                <div className="text-xl font-bold text-white font-sans my-1">
+                  {summary ? summary.masterMembersCount : 0} <span className="text-xs font-normal text-slate-400 font-bengali">জন</span>
                 </div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-                  <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
-                    <div className="text-slate-400 text-[11px]">মোট মাস্টার ফ্ল্যাট</div>
-                    <div className="text-xl font-bold text-white font-sans mt-0.5">
-                      {summary ? `${summary.masterFlatsCount} টি` : '28 টি'}
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-1">2-A থেকে 9-D (স্থায়ী)</div>
-                  </div>
-
-                  <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
-                    <div className="text-slate-400 text-[11px]">মোট মাস্টার সদস্য</div>
-                    <div className="text-xl font-bold text-white font-sans mt-0.5">
-                      {summary ? `${summary.masterMembersCount} জন` : '25 জন'}
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-1">JCT-001 ~ JCT-025</div>
-                  </div>
+                <div className="text-[10px] text-sky-400/80">
+                  {summary && summary.masterMembersCount > 0 ? 'সদস্য তালিকা' : 'খালি (০)'}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={handleClearMasterData}
-                  disabled={isSeedingMaster}
-                  className="py-2.5 px-3 bg-rose-950/80 hover:bg-rose-900 border border-rose-700/80 text-rose-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
-                  title="ডিফল্ট ২৮টি ফ্ল্যাট ও ২৫টি সদস্য তথ্য মুছে নতুনভাবে এন্ট্রি দিতে এটি নিশ্চিত করুন"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>ডিফল্ট মেম্বার/ফ্ল্যাট মুছুন</span>
-                </button>
+              {/* Flats */}
+              <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-center flex flex-col justify-between">
+                <div className="text-slate-400 text-[11px] flex items-center justify-center gap-1">
+                  <Building2 className="w-3 h-3 text-amber-400" />
+                  <span>ফ্ল্যাট/ইউনিট</span>
+                </div>
+                <div className="text-xl font-bold text-white font-sans my-1">
+                  {summary ? summary.masterFlatsCount : 0} <span className="text-xs font-normal text-slate-400 font-bengali">টি</span>
+                </div>
+                <div className="text-[10px] text-amber-400/80">
+                  {summary && summary.masterFlatsCount > 0 ? 'ফ্ল্যাট তালিকা' : 'খালি (০)'}
+                </div>
+              </div>
 
+              {/* Monthly Bills */}
+              <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-center flex flex-col justify-between">
+                <div className="text-slate-400 text-[11px] flex items-center justify-center gap-1">
+                  <Calendar className="w-3 h-3 text-indigo-400" />
+                  <span>মাসিক বিল</span>
+                </div>
+                <div className="text-xl font-bold text-indigo-400 font-sans my-1">
+                  {summary ? summary.demoBillsCount : 0}
+                </div>
+                <div className="text-[10px] text-slate-500">বিলিং রেকর্ড</div>
+              </div>
+
+              {/* Expenses */}
+              <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-center flex flex-col justify-between">
+                <div className="text-slate-400 text-[11px] flex items-center justify-center gap-1">
+                  <DollarSign className="w-3 h-3 text-rose-400" />
+                  <span>খরচ এন্ট্রি</span>
+                </div>
+                <div className="text-xl font-bold text-rose-400 font-sans my-1">
+                  {summary ? summary.demoExpensesCount : 0}
+                </div>
+                <div className="text-[10px] text-slate-500">ভাউচার হিসাব</div>
+              </div>
+
+              {/* Vouchers */}
+              <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-center flex flex-col justify-between">
+                <div className="text-slate-400 text-[11px] flex items-center justify-center gap-1">
+                  <FileText className="w-3 h-3 text-cyan-400" />
+                  <span>ভাউচার</span>
+                </div>
+                <div className="text-xl font-bold text-cyan-400 font-sans my-1">
+                  {summary ? summary.demoVouchersCount : 0}
+                </div>
+                <div className="text-[10px] text-slate-500">ফাইল/ডকুমেন্ট</div>
+              </div>
+
+              {/* Payments */}
+              <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-center flex flex-col justify-between">
+                <div className="text-slate-400 text-[11px] flex items-center justify-center gap-1">
+                  <DollarSign className="w-3 h-3 text-emerald-400" />
+                  <span>পেমেন্ট</span>
+                </div>
+                <div className="text-xl font-bold text-emerald-400 font-sans my-1">
+                  {summary ? summary.demoPaymentsCount : 0}
+                </div>
+                <div className="text-[10px] text-slate-500">টাকা জমা</div>
+              </div>
+
+              {/* Receipts */}
+              <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-center flex flex-col justify-between">
+                <div className="text-slate-400 text-[11px] flex items-center justify-center gap-1">
+                  <Receipt className="w-3 h-3 text-teal-400" />
+                  <span>মানি রসিদ</span>
+                </div>
+                <div className="text-xl font-bold text-teal-400 font-sans my-1">
+                  {summary ? summary.demoReceiptsCount : 0}
+                </div>
+                <div className="text-[10px] text-slate-500">রসিদ জেনারেট</div>
+              </div>
+
+              {/* Notices */}
+              <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-center flex flex-col justify-between">
+                <div className="text-slate-400 text-[11px] flex items-center justify-center gap-1">
+                  <MessageSquare className="w-3 h-3 text-purple-400" />
+                  <span>নোটিশ</span>
+                </div>
+                <div className="text-xl font-bold text-purple-400 font-sans my-1">
+                  {summary ? summary.demoNoticesCount : 0}
+                </div>
+                <div className="text-[10px] text-slate-500">বার্তা/নোটিশ</div>
+              </div>
+            </div>
+          </div>
+
+          {/* PRIMARY 1-CLICK MASTER RESET BANNER (Highlighted Big Action) */}
+          <div className="bg-linear-to-r from-rose-950/70 via-slate-950 to-rose-950/70 border-2 border-rose-600/60 rounded-2xl p-5 shadow-xl space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1.5 max-w-2xl">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <h4 className="text-base font-bold text-rose-300">
+                    ১-ক্লিক সম্পূর্ণ ডেটাবেজ রিসেট (সদস্য, ফ্ল্যাট ও সমস্ত ডেমো ডেটা ডিলিট)
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500/30 text-rose-200 uppercase tracking-wider border border-rose-500/50">
+                    Full Wipe
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed pl-8">
+                  এক ক্লিকে ক্লাউড ডেটাবেজ থেকে সমস্ত সদস্য, ফ্ল্যাট, মাসিক বিল, খরচের হিসাব, ভাউচার, মানি রসিদ ও পেমেন্ট হিস্ট্রি সম্পূর্ণরূপে মুছে ফেলুন। এর ফলে ডেটাবেজ একদম <strong className="text-white underline">০ টি ফ্ল্যাট ও ০ জন সদস্য</strong> হয়ে সম্পূর্ণ ফ্রেশ হয়ে যাবে, যাতে আপনি আপনার আসল ডাটা শুরু থেকে যুক্ত করতে পারেন।
+                </p>
+              </div>
+
+              <div className="shrink-0 flex items-center gap-2 self-start md:self-auto">
                 <button
                   type="button"
-                  onClick={handleSeedMasterData}
-                  disabled={isSeedingMaster}
-                  className="py-2.5 px-3 bg-sky-950 hover:bg-sky-900 border border-sky-800/80 text-sky-300 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                  onClick={() => {
+                    setClearEverythingConfirmText('');
+                    setShowClearEverythingModal(true);
+                  }}
+                  disabled={isClearingEverything}
+                  className="px-5 py-3.5 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white font-bold text-sm rounded-xl shadow-lg shadow-rose-600/30 border border-rose-500 flex items-center gap-2.5 transition-all cursor-pointer disabled:opacity-50"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSeedingMaster ? 'animate-spin' : ''}`} />
-                  <span>মাস্টার ডেটা সিঙ্ক করুন</span>
+                  {isClearingEverything ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                  <span>এক ক্লিকে সব ডেটা মুছে ফেলুন</span>
                 </button>
               </div>
             </div>
+          </div>
 
-            {/* Transactional Demo Data */}
-            <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3.5 flex flex-col justify-between">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
-                    <Layers className="w-4 h-4" />
-                    <h4>ট্রানজেকশনাল ডেমো ডেটা</h4>
+          {/* SECONDARY ACTIONS & SEEDING CONTROLS */}
+          <div className="space-y-3 pt-1">
+            <div className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span>অন্যান্য অ্যাকশন ও ডেটাবেজ সিডিং টুলস</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Action 1: Clear only transactions (keep members/flats) */}
+              <div className="bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 flex flex-col justify-between space-y-3 transition-colors">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-amber-400" />
+                      <span>শুধুমাত্র লেনদেন মুছুন</span>
+                    </span>
+                    <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20">লেনদেন</span>
                   </div>
-                  <span className="text-[10px] text-amber-400/90 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-md font-semibold">
-                    রিসেটেবল
-                  </span>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    সদস্য ও ফ্ল্যাট অপরিবর্তিত রেখে শুধুমাত্র বিল, খরচ, ভাউচার ও রসিদ রেকর্ড মুছে ফেলুন।
+                  </p>
                 </div>
-                <p className="text-xs text-slate-400">
-                  পরীক্ষামূলক ডেমো বিল, খরচ, ভাউচার ও পেমেন্ট রেকর্ড পরিসংখ্যান।
-                </p>
-
-                <div className="grid grid-cols-3 gap-2 text-xs pt-1">
-                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-center">
-                    <div className="text-slate-400 text-[10px]">মাসিক বিল</div>
-                    <div className="text-base font-bold text-amber-400 font-sans mt-0.5">
-                      {summary ? summary.demoBillsCount : 1}
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-center">
-                    <div className="text-slate-400 text-[10px]">খরচ</div>
-                    <div className="text-base font-bold text-amber-400 font-sans mt-0.5">
-                      {summary ? summary.demoExpensesCount : 8}
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-center">
-                    <div className="text-slate-400 text-[10px]">ভাউচার</div>
-                    <div className="text-base font-bold text-sky-400 font-sans mt-0.5">
-                      {summary ? summary.demoVouchersCount : 8}
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-center">
-                    <div className="text-slate-400 text-[10px]">পেমেন্ট</div>
-                    <div className="text-base font-bold text-emerald-400 font-sans mt-0.5">
-                      {summary ? summary.demoPaymentsCount : 6}
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-center">
-                    <div className="text-slate-400 text-[10px]">রসিদ</div>
-                    <div className="text-base font-bold text-emerald-400 font-sans mt-0.5">
-                      {summary ? summary.demoReceiptsCount : 6}
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-center">
-                    <div className="text-slate-400 text-[10px]">নোটিশ</div>
-                    <div className="text-base font-bold text-purple-400 font-sans mt-0.5">
-                      {summary ? summary.demoNoticesCount : 3}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => {
                     setClearDemoConfirmText('');
                     setShowClearConfirmModal(true);
                   }}
-                  className="py-2.5 px-3 bg-rose-950/80 hover:bg-rose-900 border border-rose-700/80 text-rose-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                  disabled={isClearingDemo}
+                  className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer border border-amber-500/20"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>সব ডেমো ডেটা মুছুন</span>
+                  <span>ডেমো লেনদেন মুছুন</span>
                 </button>
+              </div>
 
+              {/* Action 2: Seed Full Database */}
+              <div className="bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 flex flex-col justify-between space-y-3 transition-colors">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>সম্পূর্ণ ডেটাবেজ সিড করুন</span>
+                    </span>
+                    <span className="text-[10px] text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded border border-emerald-400/20">অল-ইন-ওয়ান</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    ২৮টি ফ্ল্যাট, ২৫ জন সদস্য ও জুন ২০২৫ এর নমুনা ভাউচার/হিসাবসহ পুরো ডেমো লোড করুন।
+                  </p>
+                </div>
                 <button
                   type="button"
-                  onClick={handleSeedDemoData}
-                  disabled={isSeedingDemo}
-                  className="py-2.5 px-3 bg-amber-950/80 hover:bg-amber-900 border border-amber-700/80 text-amber-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                  onClick={handleSeedFullDatabase}
+                  disabled={isSeedingFull}
+                  className="w-full py-2.5 px-3 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer border border-emerald-600/30"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>ডেমো ডাটা সিড করুন</span>
+                  <Sparkles className={`w-3.5 h-3.5 ${isSeedingFull ? 'animate-spin' : ''}`} />
+                  <span>সম্পূর্ণ ডেমো সিড করুন</span>
+                </button>
+              </div>
+
+              {/* Action 3: Seed only Master Flats & Members */}
+              <div className="bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 flex flex-col justify-between space-y-3 transition-colors">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-sky-400" />
+                      <span>মাস্টার ফ্ল্যাট ও সদস্য সিঙ্ক</span>
+                    </span>
+                    <span className="text-[10px] text-sky-400 bg-sky-400/10 px-1.5 py-0.5 rounded border border-sky-400/20">মাস্টার</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    কোনো লেনদেন ছাড়াই শুধুমাত্র ২৮টি ফ্ল্যাট ও ২৫টি ডিফল্ট সদস্য তথ্য লোড করুন।
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSeedMasterData}
+                  disabled={isSeedingMaster}
+                  className="w-full py-2.5 px-3 bg-sky-950/80 hover:bg-sky-900 text-sky-300 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer border border-sky-600/30"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSeedingMaster ? 'animate-spin' : ''}`} />
+                  <span>২৮ ফ্ল্যাট ও ২৫ সদস্য সিঙ্ক</span>
                 </button>
               </div>
             </div>
@@ -1556,6 +1697,84 @@ export const SettingsPage: React.FC = () => {
                   <Upload className="w-3.5 h-3.5" />
                 )}
                 <span>মাস্টার ডেটা ক্লাউডে আপলোড করুন</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Safety Confirmation Modal for Complete Wipe (1-Click Reset) */}
+      {showClearEverythingModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border-2 border-rose-600/70 rounded-3xl p-6 max-w-md w-full shadow-2xl text-white space-y-4 font-bengali">
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center mx-auto shadow-inner">
+              <Trash2 className="w-7 h-7 animate-pulse" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/30 text-rose-300 border border-rose-500/50 uppercase tracking-wider">
+                সতর্কতা: সম্পূর্ণ ডেটাবেজ রিসেট
+              </span>
+              <h3 className="text-lg font-bold text-white">আপনি কি নিশ্চিত যে সকল সদস্য, ফ্ল্যাট ও হিসাব মুছবেন?</h3>
+              <p className="text-xs text-slate-300">
+                এই অপশনটি ডেটাবেজ থেকে <strong className="text-rose-400">সদস্য তালিকা, ফ্ল্যাট তালিকা, ভাউচার ও সকল হিসাব</strong> পুরোপুরি মুছে ০ করে ফেলবে।
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-slate-950/90 rounded-2xl border border-rose-900/40 text-xs space-y-2">
+              <div className="flex items-center gap-1.5 text-rose-400 font-bold text-[12px]">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>যেসব তথ্য সম্পূর্ণরূপে মুছে ফেলা হবে:</span>
+              </div>
+              <ul className="list-disc list-inside text-slate-300 space-y-1 pl-2 text-[11px]">
+                <li><strong className="text-white">সমস্ত সদস্য তালিকা</strong> (Members)</li>
+                <li><strong className="text-white">সমস্ত ফ্ল্যাট/ইউনিট তালিকা</strong> (Flats)</li>
+                <li><strong className="text-white">মাসিক বিল ও হিসাব বিবরণী</strong> (Bills)</li>
+                <li><strong className="text-white">সকল খরচ ও ভাউচার ফাইল</strong> (Expenses & Vouchers)</li>
+                <li><strong className="text-white">সকল পেমেন্ট ও মানি রসিদ</strong> (Payments & Receipts)</li>
+              </ul>
+              <div className="p-2 bg-rose-950/60 rounded-xl border border-rose-800/40 text-[11px] text-rose-300 font-medium">
+                ফলাফল: ডেটাবেজ সম্পূর্ণ খালি (০ ফ্ল্যাট, ০ সদস্য) হয়ে যাবে যাতে আপনি নতুন করে আসল ডাটা যুক্ত করতে পারেন।
+              </div>
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              <label className="text-[11px] text-slate-300 font-semibold block">
+                নিশ্চিত করতে নিচে হুবহু <span className="font-mono text-rose-400 font-bold">DELETE ALL</span> টাইপ করুন:
+              </label>
+              <input
+                type="text"
+                value={clearEverythingConfirmText}
+                onChange={(e) => setClearEverythingConfirmText(e.target.value)}
+                placeholder="DELETE ALL"
+                className="w-full px-3 py-2.5 bg-slate-950 border border-rose-700/80 rounded-xl text-center font-mono font-bold text-rose-400 text-sm tracking-wider focus:outline-hidden focus:border-rose-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowClearEverythingModal(false);
+                  setClearEverythingConfirmText('');
+                }}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+              >
+                বাতিল করুন
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearEverything}
+                disabled={isClearingEverything || clearEverythingConfirmText.trim() !== 'DELETE ALL'}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-rose-600/40 flex items-center justify-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {isClearingEverything ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                <span>হ্যাঁ, সব মুছে ফেলুন</span>
               </button>
             </div>
           </div>

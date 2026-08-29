@@ -25,6 +25,9 @@ export const demoDataService = {
   // Get counts and summary of Master vs Demo data
   getDemoDataSummary: async (): Promise<DemoDataSummary> => {
     try {
+      const isMasterCleared = typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
+      const isDemoCleared = typeof window !== 'undefined' && localStorage.getItem('jct_demo_cleared') === 'true';
+
       const [
         flatsSnap,
         membersSnap,
@@ -55,8 +58,8 @@ export const demoDataService = {
       }).length;
 
       return {
-        masterFlatsCount: flatsSnap.size || sampleUnits.length,
-        masterMembersCount: membersSnap.size || sampleMembers.length,
+        masterFlatsCount: isMasterCleared ? flatsSnap.size : (flatsSnap.size || (isDemoCleared ? 0 : sampleUnits.length)),
+        masterMembersCount: isMasterCleared ? membersSnap.size : (membersSnap.size || (isDemoCleared ? 0 : sampleMembers.length)),
         demoExpensesCount,
         demoBillsCount,
         demoPaymentsCount,
@@ -71,9 +74,10 @@ export const demoDataService = {
       };
     } catch (error) {
       console.warn('Error fetching demo data summary:', error);
+      const isMasterCleared = typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
       return {
-        masterFlatsCount: sampleUnits.length,
-        masterMembersCount: sampleMembers.length,
+        masterFlatsCount: isMasterCleared ? 0 : sampleUnits.length,
+        masterMembersCount: isMasterCleared ? 0 : sampleMembers.length,
         demoExpensesCount: 0,
         demoBillsCount: 0,
         demoPaymentsCount: 0,
@@ -427,6 +431,86 @@ export const demoDataService = {
       console.error('Error clearing master members and flats:', error);
       throw error;
     }
+  },
+
+  // CRITICAL FUNCTION: Clears EVERYTHING completely (All Members, All Flats, All Transactions, All Bills, All Receipts)
+  clearAllDatabaseData: async (actorName: string = 'Admin'): Promise<{
+    deletedMembersCount: number;
+    deletedFlatsCount: number;
+    deletedTransactionsCount: number;
+  }> => {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('jct_master_cleared', 'true');
+        localStorage.setItem('jct_demo_cleared', 'true');
+      }
+      
+      const masterStatusRef = doc(db, 'settings', 'masterStatus');
+      await setDoc(masterStatusRef, { isMasterCleared: true, clearedAt: new Date().toISOString() }, { merge: true });
+
+      const demoStatusRef = doc(db, 'settings', 'demoStatus');
+      await setDoc(demoStatusRef, { isDemoCleared: true, clearedAt: new Date().toISOString() }, { merge: true });
+
+      let deletedMembersCount = 0;
+      let deletedFlatsCount = 0;
+      let deletedTransactionsCount = 0;
+
+      const allCollections = [
+        'members',
+        'flats',
+        'expenses',
+        'monthlyBills',
+        'payments',
+        'receipts',
+        'notices',
+        'notifications',
+        'smsLogs',
+        'openingBalances'
+      ];
+
+      for (const colName of allCollections) {
+        try {
+          const snap = await getDocs(collection(db, colName));
+          if (!snap.empty) {
+            const batch = writeBatch(db);
+            snap.docs.forEach((d) => {
+              batch.delete(d.ref);
+              if (colName === 'members') deletedMembersCount++;
+              else if (colName === 'flats') deletedFlatsCount++;
+              else deletedTransactionsCount++;
+            });
+            await batch.commit();
+          }
+        } catch (colErr) {
+          console.warn(`Error deleting collection ${colName}:`, colErr);
+        }
+      }
+
+      await auditService.logAction(
+        'DELETE',
+        'SETTINGS',
+        `FACTORY_RESET_ALL: ${actorName} দ্বারা সমস্ত সদস্য, ফ্ল্যাট এবং ডেমো লেনদেন ডেটাবেজ থেকে মুছে সম্পূর্ণ খালি করা হয়েছে।`,
+        'usr-admin',
+        actorName,
+        'factory-reset',
+        'ADMIN'
+      );
+
+      return {
+        deletedMembersCount,
+        deletedFlatsCount,
+        deletedTransactionsCount
+      };
+    } catch (error) {
+      console.error('Error in clearAllDatabaseData:', error);
+      throw error;
+    }
+  },
+
+  // Seed Full Database (Master Flats & Members + All Demo Transactions)
+  seedFullDatabase: async (): Promise<void> => {
+    await demoDataService.seedMasterData();
+    await demoDataService.seedDemoTransactions();
   },
 
   // Auto-initialize master data if database is fresh and master hasn't been cleared
