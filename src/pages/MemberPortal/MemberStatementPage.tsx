@@ -19,6 +19,10 @@ import { useBillingPeriod } from '../../contexts/BillingPeriodContext';
 import { paymentService } from '../../services/paymentService';
 import { memberService } from '../../services/memberService';
 import { flatService } from '../../services/flatService';
+import { expenseService } from '../../services/expenseService';
+import { resolveActiveMember, resolveMemberFlats, calculateMemberBillSummary } from '../../utils/memberResolver';
+import { MemberSelectorBar } from '../../components/common/MemberSelectorBar';
+import { ExpenseItem } from '../../types';
 
 interface MemberStatementPageProps {
   currentUser: UserProfile;
@@ -28,74 +32,79 @@ export const MemberStatementPage: React.FC<MemberStatementPageProps> = ({
   currentUser,
 }) => {
   const { t, formatNumber, formatCurrency, isBangla } = useTranslation();
-  const { selectedYear: currentActiveYear, periodLabel } = useBillingPeriod();
+  const { selectedYear: currentActiveYear, billingPeriodId, periodLabel } = useBillingPeriod();
 
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [members, setMembers] = useState<Member[]>(sampleMembers);
   const [flats, setFlats] = useState<FlatUnit[]>(sampleUnits);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
+  const [overrideMember, setOverrideMember] = useState<Member | null>(null);
 
   const [selectedYear, setSelectedYear] = useState<number>(currentActiveYear || 2026);
   const [selectedFlat, setSelectedFlat] = useState<string>('ALL');
 
+  const activeMember: Member = overrideMember || resolveActiveMember(currentUser, members);
+
   useEffect(() => {
-    const targetMemberId = currentUser.memberId || 'JCT-006';
+    const targetMemberId = activeMember.memberId || currentUser.memberId || 'JCT-001';
     const unsubPay = paymentService.subscribeToMemberPayments(
       targetMemberId,
       (loaded) => setPayments(loaded),
       undefined,
-      currentUser.flatUnits
+      activeMember.flatUnitNumbers || currentUser.flatUnits
     );
     const unsubMem = memberService.subscribeToMembers((loaded) => setMembers(loaded));
     const unsubFlats = flatService.subscribeToFlats((loaded) => setFlats(loaded));
+    const unsubExp = expenseService.subscribeToExpenses((loaded) => setExpenses(loaded), billingPeriodId);
 
     return () => {
       unsubPay();
       unsubMem();
       unsubFlats();
+      unsubExp();
     };
-  }, [currentUser.memberId, currentUser.flatUnits]);
+  }, [activeMember.memberId, activeMember.flatUnitNumbers, currentUser.memberId, currentUser.flatUnits, billingPeriodId]);
 
-  const member: Member = members.find(
-    (m) => (m.memberId && currentUser.memberId && m.memberId.toUpperCase() === currentUser.memberId.toUpperCase()) || 
-           (currentUser.flatUnits && (m.flatUnitNumbers || []).some(f => currentUser.flatUnits?.includes(f))) ||
-           m.id === currentUser.id
-  ) || {
-    id: currentUser.id || 'usr-member',
-    memberId: currentUser.memberId || (currentUser.flatUnits && currentUser.flatUnits[0]) || 'JCT-001',
-    name: currentUser.name || 'সদস্য',
-    banglaName: currentUser.banglaName || currentUser.name || 'সদস্য',
-    email: currentUser.email || 'member@japancitytower.com',
-    phone: currentUser.phone || '০১৭১১-০০০০০০',
-    memberType: 'FLAT_OWNER',
-    memberTypeBangla: 'ফ্ল্যাট মালিক',
-    flatUnitNumbers: currentUser.flatUnits || ['2-A'],
-    totalUnits: (currentUser.flatUnits || []).length || 1,
-    status: 'ACTIVE'
-  };
-
-  const memberFlats = flats.filter((u) => 
-    (member.flatUnitNumbers || []).includes(u.unitNumber) || 
-    (currentUser.flatUnits || []).includes(u.unitNumber)
-  );
+  const member = activeMember;
+  const memberFlats = resolveMemberFlats(member, currentUser, flats);
 
   const handlePrint = () => {
     window.print();
   };
 
+  const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
+  const { dualCalc, perFlatBill, isKh } = calculateMemberBillSummary(
+    member,
+    memberFlats,
+    payments,
+    periodExp,
+    flats.length || 28
+  );
+
   // Build statement entries for member's flats
-  const baseRate = 1997;
+  const baseRate = perFlatBill || 1997;
   const filteredFlats = selectedFlat === 'ALL' ? memberFlats : memberFlats.filter(f => f.unitNumber === selectedFlat);
 
   // Group payments by flat and calculate total demand vs paid
-  const totalBilled = filteredFlats.length * baseRate;
+  const totalBilled = selectedFlat === 'ALL'
+    ? (isKh ? dualCalc.khalilur.totalBill : filteredFlats.reduce((sum, f) => sum + (f.monthlyBaseBill || baseRate), 0))
+    : (isKh ? dualCalc.khalilur.perFlatBill : filteredFlats.reduce((sum, f) => sum + (f.monthlyBaseBill || baseRate), 0));
+
   const totalPaid = payments
     .filter(p => selectedFlat === 'ALL' || p.flatUnitNumber === selectedFlat)
-    .reduce((sum, p) => sum + p.paidAmount, 0);
+    .reduce((sum, p) => sum + (p.paidAmount || 0), 0);
   const netDue = Math.max(0, totalBilled - totalPaid);
 
   return (
     <div className="space-y-6 font-bengali">
-      <div className="print:hidden">
+      <div className="print:hidden space-y-4">
+        <MemberSelectorBar
+          members={members}
+          activeMember={member}
+          onSelectMember={(m) => setOverrideMember(m)}
+          currentUserRole={currentUser.role}
+        />
+
         <PageHeader
           title={isBangla ? 'আমার অ্যাকাউন্ট স্টেটমেন্ট' : 'My Account Statement'}
           subtitle={isBangla 

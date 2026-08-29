@@ -19,6 +19,9 @@ import { useTranslation } from '../../i18n/LanguageContext';
 import { BillingPeriodSelector } from '../common/BillingPeriodSelector';
 import { LanguageToggle } from '../common/LanguageToggle';
 import { notificationService } from '../../services/notificationService';
+import { memberService } from '../../services/memberService';
+import { buildingSettingsService, DEFAULT_BUILDING_INFO } from '../../services/buildingSettingsService';
+import { Member, BuildingInfoSettings } from '../../types';
 
 interface HeaderProps {
   currentUser: UserProfile;
@@ -39,15 +42,49 @@ export const Header: React.FC<HeaderProps> = ({
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [dbMembers, setDbMembers] = useState<Member[]>([]);
+  const [buildingInfo, setBuildingInfo] = useState<BuildingInfoSettings>(DEFAULT_BUILDING_INFO);
 
   useEffect(() => {
-    const unsubscribe = notificationService.subscribeToNotifications(
+    const unsubscribeNotif = notificationService.subscribeToNotifications(
       (list) => setNotifications(list),
       currentUser.id,
       currentUser.memberId
     );
-    return () => unsubscribe();
+    const unsubscribeMembers = memberService.subscribeToMembers((loaded) => {
+      setDbMembers(loaded);
+    });
+    const unsubscribeBuilding = buildingSettingsService.subscribeToBuildingInfo((info) => {
+      setBuildingInfo(info);
+    });
+
+    return () => {
+      unsubscribeNotif();
+      unsubscribeMembers();
+      unsubscribeBuilding();
+    };
   }, [currentUser.id, currentUser.memberId]);
+
+  // Combine default sample users (Admins/Accountant) with real loaded members from Firestore
+  const realMemberProfiles: UserProfile[] = dbMembers.map((m) => ({
+    id: `usr-${m.memberId || m.id}`,
+    memberId: m.memberId,
+    name: m.name,
+    banglaName: m.banglaName || m.name,
+    email: m.email || `${(m.memberId || 'member').toLowerCase()}@japancitytower.com`,
+    role: 'MEMBER' as UserRole,
+    roleBangla: 'ফ্ল্যাট মালিক (সদস্য)',
+    phone: m.phone,
+    flatUnits: m.flatUnitNumbers || [],
+    status: 'ACTIVE' as const
+  }));
+
+  // Ensure unique selectable profiles list
+  const adminUsers = sampleUsers.filter(u => u.role !== 'MEMBER');
+  const allSelectableUsers: UserProfile[] = [
+    ...adminUsers,
+    ...(realMemberProfiles.length > 0 ? realMemberProfiles : sampleUsers.filter(u => u.role === 'MEMBER'))
+  ];
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
@@ -75,9 +112,17 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <div className="flex items-center gap-2 sm:gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-slate-950 via-slate-900 to-amber-600 flex items-center justify-center text-amber-300 shadow-xs shrink-0">
-                <Building2 className="w-5 h-5" />
-              </div>
+              {buildingInfo.logoUrl ? (
+                <img
+                  src={buildingInfo.logoUrl}
+                  alt={buildingInfo.buildingNameBangla || 'Logo'}
+                  className="w-9 h-9 rounded-xl object-contain bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-0.5 shadow-xs shrink-0"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-slate-950 via-slate-900 to-amber-600 flex items-center justify-center text-amber-300 shadow-xs shrink-0">
+                  <Building2 className="w-5 h-5" />
+                </div>
+              )}
               <div>
                 <div className="flex items-center gap-1.5">
                   <h1 className="text-sm sm:text-base font-black text-slate-900 dark:text-white tracking-tight leading-none">
@@ -134,7 +179,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <p className="text-[11px] text-slate-500">{t.auth.previewRoles}</p>
                 </div>
                 <div className="py-1 space-y-1">
-                  {sampleUsers.map((user) => (
+                  {allSelectableUsers.map((user) => (
                     <button
                       key={user.id}
                       type="button"

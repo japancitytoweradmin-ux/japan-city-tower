@@ -23,6 +23,8 @@ import { memberService } from '../../services/memberService';
 import { paymentService } from '../../services/paymentService';
 import { expenseService } from '../../services/expenseService';
 import { calculateDualBilling, isKhalilurMember } from '../../utils/billingCalculator';
+import { resolveActiveMember, resolveMemberFlats, calculateMemberBillSummary } from '../../utils/memberResolver';
+import { MemberSelectorBar } from '../../components/common/MemberSelectorBar';
 
 interface MemberFlatsPageProps {
   currentUser: UserProfile;
@@ -38,21 +40,24 @@ export const MemberFlatsPage: React.FC<MemberFlatsPageProps> = ({
 
   const [flats, setFlats] = useState<FlatUnit[]>(sampleUnits);
   const [members, setMembers] = useState<Member[]>(sampleMembers);
-  const [payments, setPayments] = useState<PaymentRecord[]>(samplePayments);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
+  const [overrideMember, setOverrideMember] = useState<Member | null>(null);
+
+  const activeMember: Member = overrideMember || resolveActiveMember(currentUser, members);
 
   useEffect(() => {
     const unsubFlats = flatService.subscribeToFlats((loaded) => setFlats(loaded));
     const unsubMem = memberService.subscribeToMembers((loaded) => setMembers(loaded));
-    const targetMemberId = currentUser.memberId || 'JCT-006';
+    const targetMemberId = activeMember.memberId || currentUser.memberId || 'JCT-001';
     const unsubPay = paymentService.subscribeToMemberPayments(
       targetMemberId,
       (loaded) => setPayments(loaded),
       billingPeriodId,
-      currentUser.flatUnits
+      activeMember.flatUnitNumbers || currentUser.flatUnits
     );
     const unsubExpenses = expenseService.subscribeToExpenses((loadedExp) => {
-      setExpenses(loadedExp.length > 0 ? loadedExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []));
+      setExpenses(loadedExp);
     }, billingPeriodId);
 
     return () => {
@@ -61,46 +66,33 @@ export const MemberFlatsPage: React.FC<MemberFlatsPageProps> = ({
       unsubPay();
       unsubExpenses();
     };
-  }, [currentUser.memberId, currentUser.flatUnits, billingPeriodId]);
+  }, [activeMember.memberId, activeMember.flatUnitNumbers, currentUser.memberId, currentUser.flatUnits, billingPeriodId]);
 
-  const member: Member = members.find(
-    (m) => (m.memberId && currentUser.memberId && m.memberId.toUpperCase() === currentUser.memberId.toUpperCase()) || 
-           (currentUser.flatUnits && (m.flatUnitNumbers || []).some(f => currentUser.flatUnits?.includes(f))) ||
-           m.id === currentUser.id
-  ) || {
-    id: currentUser.id || 'usr-member',
-    memberId: currentUser.memberId || (currentUser.flatUnits && currentUser.flatUnits[0]) || 'JCT-001',
-    name: currentUser.name || 'সদস্য',
-    banglaName: currentUser.banglaName || currentUser.name || 'সদস্য',
-    email: currentUser.email || 'member@japancitytower.com',
-    phone: currentUser.phone || '০১৭১১-০০০০০০',
-    memberType: 'FLAT_OWNER',
-    memberTypeBangla: 'ফ্ল্যাট মালিক',
-    flatUnitNumbers: currentUser.flatUnits || ['2-A'],
-    totalUnits: (currentUser.flatUnits || []).length || 1,
-    status: 'ACTIVE'
-  };
+  const member = activeMember;
 
-  // Owned flats
-  const memberFlats = flats.filter((u) => 
-    (member.flatUnitNumbers || []).includes(u.unitNumber) || 
-    (currentUser.flatUnits || []).includes(u.unitNumber)
-  );
+  // Owned flats resolved safely
+  const memberFlats = resolveMemberFlats(member, currentUser, flats);
 
-  const isKh = isKhalilurMember(member.memberId);
   const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
   const effectiveExp = periodExp.length > 0 ? periodExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
-  const dualCalc = calculateDualBilling(effectiveExp, flats.length || 28);
-
-  const totalUnits = memberFlats.length || 1;
-  const totalBill = isKh
-    ? dualCalc.khalilur.totalBill
-    : memberFlats.reduce((sum, f) => sum + (f.monthlyBaseBill || dualCalc.regularRoundedPerFlat), 0);
-  const totalPaid = payments.reduce((sum, p) => sum + p.paidAmount, 0);
-  const totalDue = Math.max(0, totalBill - totalPaid);
+  
+  const { dualCalc, perFlatBill, totalUnits, totalBill, totalPaid, totalDue, isKh } = calculateMemberBillSummary(
+    member,
+    memberFlats,
+    payments,
+    effectiveExp,
+    flats.length || 28
+  );
 
   return (
     <div className="space-y-6 font-bengali">
+      <MemberSelectorBar
+        members={members}
+        activeMember={member}
+        onSelectMember={(m) => setOverrideMember(m)}
+        currentUserRole={currentUser.role}
+      />
+
       <PageHeader
         title={isBangla ? 'আমার ফ্ল্যাট ও ইউনিটসমূহ' : 'My Flats & Units'}
         subtitle={isBangla 

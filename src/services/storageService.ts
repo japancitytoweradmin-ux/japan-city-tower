@@ -16,6 +16,42 @@ const fileToDataUrl = (file: File): Promise<string> => {
   });
 };
 
+// Compress image file to a lightweight Data URL (WebP/PNG)
+const compressImageToDataUrl = (file: File, maxWidth = 500, quality = 0.85): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/png', quality));
+        } else {
+          resolve(e.target?.result as string);
+        }
+      };
+      img.onerror = () => resolve(e.target?.result as string);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => {
+      fileToDataUrl(file).then(resolve).catch(() => resolve(''));
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
 export const storageService = {
   /**
    * Upload voucher file to Firebase Storage
@@ -121,14 +157,23 @@ export const storageService = {
     file: File,
     onProgress?: UploadProgressCallback
   ): Promise<string> => {
+    // 1. Prepare compressed Data URL fallback upfront so CORS/Network errors can't block logo upload
+    const dataUrlFallback = await compressImageToDataUrl(file, 450, 0.85);
+
     const ext = file.name.split('.').pop() || 'png';
     const storagePath = `system-settings/logo/building_logo_${Date.now()}.${ext}`;
 
     try {
+      if (onProgress) onProgress(30);
       const storageRef = ref(storage, storagePath);
       const uploadTask = uploadBytesResumable(storageRef, file);
 
-      return await new Promise<string>((resolve, reject) => {
+      const downloadUrl = await new Promise<string>((resolve) => {
+        const timeoutId = setTimeout(() => {
+          console.warn('Firebase storage upload timed out, resolving to compressed DataURL');
+          resolve(dataUrlFallback);
+        }, 3500);
+
         uploadTask.on(
           'state_changed',
           (snapshot) => {
@@ -136,22 +181,28 @@ export const storageService = {
             if (onProgress) onProgress(progress);
           },
           (error) => {
-            console.warn('Logo upload to Firebase Storage failed, using DataURL fallback:', error);
-            fileToDataUrl(file).then(resolve).catch(reject);
+            clearTimeout(timeoutId);
+            console.warn('Logo upload to Firebase Storage failed (CORS/Network), using DataURL fallback:', error);
+            resolve(dataUrlFallback);
           },
           async () => {
+            clearTimeout(timeoutId);
             try {
-              const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-              resolve(downloadUrl);
+              const url = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve(url);
             } catch (err) {
-              const fallback = await fileToDataUrl(file);
-              resolve(fallback);
+              resolve(dataUrlFallback);
             }
           }
         );
       });
+
+      if (onProgress) onProgress(100);
+      return downloadUrl;
     } catch (err) {
-      return await fileToDataUrl(file);
+      console.warn('Firebase Storage upload exception, falling back to compressed DataURL:', err);
+      if (onProgress) onProgress(100);
+      return dataUrlFallback;
     }
   }
 };

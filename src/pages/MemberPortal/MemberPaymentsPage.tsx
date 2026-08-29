@@ -22,6 +22,8 @@ import { useBillingPeriod } from '../../contexts/BillingPeriodContext';
 import { paymentService } from '../../services/paymentService';
 import { memberService } from '../../services/memberService';
 import { flatService } from '../../services/flatService';
+import { resolveActiveMember, resolveMemberFlats } from '../../utils/memberResolver';
+import { MemberSelectorBar } from '../../components/common/MemberSelectorBar';
 
 interface MemberPaymentsPageProps {
   currentUser: UserProfile;
@@ -38,19 +40,22 @@ export const MemberPaymentsPage: React.FC<MemberPaymentsPageProps> = ({
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [members, setMembers] = useState<Member[]>(sampleMembers);
   const [flats, setFlats] = useState<FlatUnit[]>(sampleUnits);
+  const [overrideMember, setOverrideMember] = useState<Member | null>(null);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFlat, setSelectedFlat] = useState<string>('ALL');
   const [selectedMethod, setSelectedMethod] = useState<string>('ALL');
 
+  const activeMember: Member = overrideMember || resolveActiveMember(currentUser, members);
+
   useEffect(() => {
-    const targetMemberId = currentUser.memberId || 'JCT-006';
+    const targetMemberId = activeMember.memberId || currentUser.memberId || 'JCT-001';
     const unsubPay = paymentService.subscribeToMemberPayments(
       targetMemberId,
       (loaded) => setPayments(loaded),
       undefined,
-      currentUser.flatUnits
+      activeMember.flatUnitNumbers || currentUser.flatUnits
     );
     const unsubMem = memberService.subscribeToMembers((loaded) => setMembers(loaded));
     const unsubFlats = flatService.subscribeToFlats((loaded) => setFlats(loaded));
@@ -60,30 +65,10 @@ export const MemberPaymentsPage: React.FC<MemberPaymentsPageProps> = ({
       unsubMem();
       unsubFlats();
     };
-  }, [currentUser.memberId, currentUser.flatUnits]);
+  }, [activeMember.memberId, activeMember.flatUnitNumbers, currentUser.memberId, currentUser.flatUnits]);
 
-  const member: Member = members.find(
-    (m) => (m.memberId && currentUser.memberId && m.memberId.toUpperCase() === currentUser.memberId.toUpperCase()) || 
-           (currentUser.flatUnits && (m.flatUnitNumbers || []).some(f => currentUser.flatUnits?.includes(f))) ||
-           m.id === currentUser.id
-  ) || {
-    id: currentUser.id || 'usr-member',
-    memberId: currentUser.memberId || (currentUser.flatUnits && currentUser.flatUnits[0]) || 'JCT-001',
-    name: currentUser.name || 'সদস্য',
-    banglaName: currentUser.banglaName || currentUser.name || 'সদস্য',
-    email: currentUser.email || 'member@japancitytower.com',
-    phone: currentUser.phone || '০১৭১১-০০০০০০',
-    memberType: 'FLAT_OWNER',
-    memberTypeBangla: 'ফ্ল্যাট মালিক',
-    flatUnitNumbers: currentUser.flatUnits || ['2-A'],
-    totalUnits: (currentUser.flatUnits || []).length || 1,
-    status: 'ACTIVE'
-  };
-
-  const memberFlats = flats.filter((u) => 
-    (member.flatUnitNumbers || []).includes(u.unitNumber) || 
-    (currentUser.flatUnits || []).includes(u.unitNumber)
-  );
+  const member = activeMember;
+  const memberFlats = resolveMemberFlats(member, currentUser, flats);
 
   // Filter payments
   const filteredPayments = payments.filter((p) => {
@@ -114,6 +99,13 @@ export const MemberPaymentsPage: React.FC<MemberPaymentsPageProps> = ({
 
   return (
     <div className="space-y-6 font-bengali">
+      <MemberSelectorBar
+        members={members}
+        activeMember={member}
+        onSelectMember={(m) => setOverrideMember(m)}
+        currentUserRole={currentUser.role}
+      />
+
       <PageHeader
         title={isBangla ? 'আমার পেমেন্ট হিস্টোরি' : 'My Payment History'}
         subtitle={isBangla 

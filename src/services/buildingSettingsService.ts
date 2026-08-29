@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { 
   BuildingInfoSettings, 
@@ -60,6 +60,29 @@ export const buildingSettingsService = {
       return DEFAULT_BUILDING_INFO;
     } catch {
       return DEFAULT_BUILDING_INFO;
+    }
+  },
+
+  subscribeToBuildingInfo: (callback: (info: BuildingInfoSettings) => void) => {
+    try {
+      return onSnapshot(
+        doc(db, 'settings', 'building_info'),
+        (snap) => {
+          if (snap.exists()) {
+            callback({ ...DEFAULT_BUILDING_INFO, ...snap.data() } as BuildingInfoSettings);
+          } else {
+            callback(DEFAULT_BUILDING_INFO);
+          }
+        },
+        (error) => {
+          console.warn('Building info subscription error:', error);
+          callback(DEFAULT_BUILDING_INFO);
+        }
+      );
+    } catch (error) {
+      console.warn('Failed to subscribe to building info:', error);
+      callback(DEFAULT_BUILDING_INFO);
+      return () => {};
     }
   },
 

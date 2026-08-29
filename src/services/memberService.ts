@@ -87,6 +87,41 @@ export const memberService = {
     }
   },
 
+  // Auto-Sync member flats to Flat Master Data (Building & Flat Master Data)
+  syncMemberFlatsToMaster: async (member: Member): Promise<void> => {
+    try {
+      const units = member.flatUnitNumbers || [];
+      for (const unitStr of units) {
+        if (!unitStr || !unitStr.trim()) continue;
+        const cleanUnit = unitStr.trim();
+        
+        // Extract floor (e.g., "2-A" -> 2, "14-B" -> 14)
+        const floorMatch = cleanUnit.match(/^(\d+)/);
+        const floorNum = floorMatch ? parseInt(floorMatch[1]) : 2;
+
+        const flatRef = doc(db, 'flats', cleanUnit);
+        await setDoc(flatRef, {
+          id: cleanUnit,
+          unitNumber: cleanUnit,
+          floor: floorNum,
+          unitType: 'Residential',
+          memberId: member.memberId || member.id,
+          ownerName: member.name,
+          ownerPhone: member.phone || '',
+          monthlyBaseBill: 1997,
+          currentPaid: member.totalPaid || 0,
+          currentDue: member.totalDue || 0,
+          status: 'OCCUPIED_OWNER',
+          paymentStatus: 'DUE',
+          isMasterData: true,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
+    } catch (err) {
+      console.warn('Error syncing member flats to master data:', err);
+    }
+  },
+
   // Update member
   updateMember: async (memberId: string, updates: Partial<Member>): Promise<void> => {
     try {
@@ -95,10 +130,17 @@ export const memberService = {
         ...updates,
         updatedAt: new Date().toISOString()
       });
+
+      // Retrieve full member to sync flats
+      const fullMember = await memberService.getMemberById(memberId);
+      if (fullMember) {
+        await memberService.syncMemberFlatsToMaster(fullMember);
+      }
+
       await auditService.logAction(
         'UPDATE',
         'MEMBERS',
-        `সদস্য ${memberId}-এর তথ্য আপডেট করা হয়েছে`,
+        `সদস্য ${memberId}-এর তথ্য ও ফ্ল্যাট মাস্টার ডাটা আপডেট করা হয়েছে`,
         'usr-admin',
         'Admin',
         memberId
@@ -242,6 +284,9 @@ export const memberService = {
         isDemo: false,
         updatedAt: new Date().toISOString()
       }, { merge: true });
+
+      // Auto sync flats to Flat Master Data
+      await memberService.syncMemberFlatsToMaster(member);
     } catch (error) {
       console.error('Error upserting member:', error);
       throw error;

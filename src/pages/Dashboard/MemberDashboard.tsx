@@ -33,6 +33,8 @@ import { expenseService } from '../../services/expenseService';
 import { noticeService } from '../../services/noticeService';
 import { calculateDualBilling, isKhalilurMember } from '../../utils/billingCalculator';
 import { Modal } from '../../components/common/Modal';
+import { resolveActiveMember, resolveMemberFlats, calculateMemberBillSummary } from '../../utils/memberResolver';
+import { MemberSelectorBar } from '../../components/common/MemberSelectorBar';
 
 interface MemberDashboardProps {
   currentUser: UserProfile;
@@ -54,6 +56,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
+  const [overrideMember, setOverrideMember] = useState<Member | null>(null);
 
   // Time-aware greeting
   const getGreeting = () => {
@@ -64,21 +67,24 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
     return isBangla ? 'শুভ সন্ধ্যা' : 'Good Evening';
   };
 
+  // Resolve active member safely
+  const activeMember: Member = overrideMember || resolveActiveMember(currentUser, members);
+
   useEffect(() => {
     const unsubMem = memberService.subscribeToMembers((loaded) => setMembers(loaded));
     const unsubFlats = flatService.subscribeToFlats((loaded) => setFlats(loaded));
     
     // Member-scoped payments with real-time updates
-    const targetMemberId = currentUser.memberId || 'JCT-006';
+    const targetMemberId = activeMember.memberId || currentUser.memberId || 'JCT-001';
     const unsubPay = paymentService.subscribeToMemberPayments(
       targetMemberId,
       (loaded) => setPayments(loaded),
       billingPeriodId,
-      currentUser.flatUnits
+      activeMember.flatUnitNumbers || currentUser.flatUnits
     );
 
     const unsubExpenses = expenseService.subscribeToExpenses((loadedExp) => {
-      setExpenses(loadedExp.length > 0 ? loadedExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []));
+      setExpenses(loadedExp);
     }, billingPeriodId);
 
     const unsubNotices = noticeService.subscribeToPublishedNotices((loaded) => setNotices(loaded));
@@ -90,53 +96,38 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
       unsubExpenses();
       unsubNotices();
     };
-  }, [currentUser.memberId, currentUser.flatUnits, billingPeriodId]);
+  }, [activeMember.memberId, activeMember.flatUnitNumbers, currentUser.memberId, currentUser.flatUnits, billingPeriodId]);
 
-  // Find member details
-  const member: Member = members.find(
-    (m) => (m.memberId && currentUser.memberId && m.memberId.toUpperCase() === currentUser.memberId.toUpperCase()) || 
-           (currentUser.flatUnits && (m.flatUnitNumbers || []).some(f => currentUser.flatUnits?.includes(f))) ||
-           m.id === currentUser.id
-  ) || {
-    id: currentUser.id || 'usr-member',
-    memberId: currentUser.memberId || (currentUser.flatUnits && currentUser.flatUnits[0]) || 'JCT-001',
-    name: currentUser.name || 'সদস্য',
-    banglaName: currentUser.banglaName || currentUser.name || 'সদস্য',
-    email: currentUser.email || 'member@japancitytower.com',
-    phone: currentUser.phone || '০১৭১১-০০০০০০',
-    memberType: 'FLAT_OWNER',
-    memberTypeBangla: 'ফ্ল্যাট মালিক',
-    flatUnitNumbers: currentUser.flatUnits || ['2-A'],
-    totalUnits: (currentUser.flatUnits || []).length || 1,
-    status: 'ACTIVE'
-  };
+  const member = activeMember;
 
-  // Assigned flats for this member
-  const memberFlats = flats.filter((u) => 
-    (member.flatUnitNumbers || []).includes(u.unitNumber) || 
-    (currentUser.flatUnits || []).includes(u.unitNumber)
-  );
-
+  // Assigned flats for this member using robust resolver
+  const memberFlats = resolveMemberFlats(member, currentUser, flats);
   const memberPayments = payments;
 
-  // Multi-unit totals for current billing period using dual billing engine
-  const totalUnits = memberFlats.length || member.flatUnitNumbers?.length || 1;
-  const isKh = isKhalilurMember(member.memberId);
+  // Multi-unit totals for current billing period using dual billing engine & resolver
   const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
   const effectiveExp = periodExp.length > 0 ? periodExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
-  const dualCalc = calculateDualBilling(effectiveExp, flats.length || 28);
-
-  const totalBill = isKh 
-    ? dualCalc.khalilur.totalBill
-    : (totalUnits * dualCalc.regularRoundedPerFlat);
-
-  const totalPaid = memberPayments.reduce((sum, p) => sum + p.paidAmount, 0);
-  const totalDue = Math.max(0, totalBill - totalPaid);
+  
+  const { dualCalc, perFlatBill, totalUnits, totalBill, totalPaid, totalDue, isKh } = calculateMemberBillSummary(
+    member,
+    memberFlats,
+    memberPayments,
+    effectiveExp,
+    flats.length || 28
+  );
 
   const hasOverdueUnit = memberFlats.some(f => f.paymentStatus === 'OVERDUE');
 
   return (
     <div className="space-y-6 font-bengali">
+      {/* Member Selector Bar if viewing as Admin or previewing */}
+      <MemberSelectorBar
+        members={members}
+        activeMember={member}
+        onSelectMember={(m) => setOverrideMember(m)}
+        currentUserRole={currentUser.role}
+      />
+
       {/* Member Hero / Welcome Card */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 text-white rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-xl relative overflow-hidden">
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
