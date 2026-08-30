@@ -111,14 +111,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const periodExpenses = expenses.filter(
     (e) => (e.billingPeriodId || e.month) === billingPeriodId
   );
-  const effectiveExpenses = periodExpenses.length > 0 ? periodExpenses : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
+  const effectiveExpenses = periodExpenses;
   const dualCalc = calculateDualBilling(effectiveExpenses, totalFlatsCount);
   const totalPeriodExpense = dualCalc.totalExpense;
 
   // Per flat calculated or default bill
   const currentBill = bills.find((b) => (b.billingPeriodId || b.month) === billingPeriodId);
-  const perFlatAmount = currentBill?.finalPerFlatAmount || currentBill?.perFlatAmount || (dualCalc.totalExpense > 0 ? dualCalc.regularRoundedPerFlat : 1997);
-  const thisMonthTotalBill = currentBill?.totalExpense || (dualCalc.totalExpense > 0 ? dualCalc.totalExpense : totalFlatsCount * 1997);
+  const perFlatAmount = currentBill?.finalPerFlatAmount || currentBill?.perFlatAmount || (dualCalc.totalExpense > 0 ? dualCalc.regularRoundedPerFlat : 0);
+  const thisMonthTotalBill = currentBill?.totalExpense || (dualCalc.totalExpense > 0 ? dualCalc.totalExpense : 0);
 
   // Total payments received in current period
   const periodPayments = payments.filter(

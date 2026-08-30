@@ -35,7 +35,7 @@ export const ExpensesPage: React.FC = () => {
   const { billingPeriodId, periodLabel, selectedYear, selectedMonth } = useBillingPeriod();
   const { t, formatNumber, formatCurrency, isBangla } = useTranslation();
 
-  const [expenses, setExpenses] = useState<ExpenseItem[]>(sampleExpensesJune2025);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');

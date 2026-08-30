@@ -21,28 +21,13 @@ const isMasterCleared = (): boolean => {
   return typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
 };
 
-const mergeFlatsWithMaster = (firestoreFlats: FlatUnit[]): FlatUnit[] => {
-  if (isMasterCleared()) {
-    return firestoreFlats.filter(f => !f.isDeleted);
-  }
-  const map = new Map<string, FlatUnit>();
-  sampleUnits.forEach(u => {
-    map.set(u.unitNumber, { ...u });
-  });
-  firestoreFlats.forEach(ff => {
-    if (ff.isDeleted) {
-      map.delete(ff.unitNumber);
-      if (ff.id) map.delete(ff.id);
-    } else {
-      const key = ff.unitNumber || ff.id;
-      const existing = map.get(key) || {};
-      map.set(key, { ...existing, ...ff, id: ff.id || key });
-    }
-  });
-  return Array.from(map.values()).sort((a, b) => {
-    if (a.floor !== b.floor) return a.floor - b.floor;
-    return a.unitNumber.localeCompare(b.unitNumber);
-  });
+const processFirestoreFlats = (firestoreFlats: FlatUnit[]): FlatUnit[] => {
+  return firestoreFlats
+    .filter((f) => !f.isDeleted)
+    .sort((a, b) => {
+      if (a.floor !== b.floor) return a.floor - b.floor;
+      return (a.unitNumber || '').localeCompare(b.unitNumber || '');
+    });
 };
 
 export const flatService = {
@@ -52,16 +37,16 @@ export const flatService = {
       const q = query(collection(db, FLATS_COLLECTION), orderBy('floor', 'asc'));
       const snapshot = await getDocs(q);
       if (snapshot.empty) {
-        return isMasterCleared() ? [] : sampleUnits;
+        return [];
       }
       const firestoreFlats = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data()
       })) as FlatUnit[];
-      return mergeFlatsWithMaster(firestoreFlats);
+      return processFirestoreFlats(firestoreFlats);
     } catch (error) {
-      console.warn('Error loading flats from Firestore, falling back to initial master data:', error);
-      return isMasterCleared() ? [] : sampleUnits;
+      console.warn('Error loading flats from Firestore:', error);
+      return [];
     }
   },
 
@@ -75,13 +60,9 @@ export const flatService = {
         if (data.isDeleted) return null;
         return data;
       }
-      if (isMasterCleared()) return null;
-      const local = sampleUnits.find(u => u.unitNumber === unitNumber || u.id === unitNumber);
-      return local || null;
+      return null;
     } catch {
-      if (isMasterCleared()) return null;
-      const local = sampleUnits.find(u => u.unitNumber === unitNumber || u.id === unitNumber);
-      return local || null;
+      return null;
     }
   },
 
@@ -93,23 +74,23 @@ export const flatService = {
         q,
         (snapshot) => {
           if (snapshot.empty) {
-            callback(isMasterCleared() ? [] : sampleUnits);
+            callback([]);
           } else {
             const firestoreFlats = snapshot.docs.map((doc) => ({
               id: doc.id,
               ...doc.data()
             })) as FlatUnit[];
-            callback(mergeFlatsWithMaster(firestoreFlats));
+            callback(processFirestoreFlats(firestoreFlats));
           }
         },
         (error) => {
-          console.warn('Flats snapshot listener error, using fallback:', error);
-          callback(isMasterCleared() ? [] : sampleUnits);
+          console.warn('Flats snapshot listener error:', error);
+          callback([]);
         }
       );
     } catch (error) {
       console.warn('Failed to subscribe to flats:', error);
-      callback(isMasterCleared() ? [] : sampleUnits);
+      callback([]);
       return () => {};
     }
   },

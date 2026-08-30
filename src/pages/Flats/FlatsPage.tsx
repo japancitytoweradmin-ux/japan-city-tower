@@ -110,7 +110,7 @@ export const FlatsPage: React.FC = () => {
 
   // Compute period dual billing metrics
   const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
-  const effectiveExp = periodExp.length > 0 ? periodExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
+  const effectiveExp = periodExp;
   const isMasterCleared = typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
   const dualCalc = calculateDualBilling(effectiveExp, isMasterCleared ? units.length : (units.length || 28));
   const defaultBillAmountNum = parseFloat(defaultBillAmount) || 1997;

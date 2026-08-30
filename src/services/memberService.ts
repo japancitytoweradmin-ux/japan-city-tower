@@ -22,29 +22,14 @@ const isMasterCleared = (): boolean => {
   return typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
 };
 
-const mergeMembersWithMaster = (firestoreMembers: Member[]): Member[] => {
-  if (isMasterCleared()) {
-    return firestoreMembers.filter(m => !m.isDeleted);
-  }
-  const map = new Map<string, Member>();
-  sampleMembers.forEach(m => {
-    map.set(m.memberId, { ...m });
-  });
-  firestoreMembers.forEach(fm => {
-    if (fm.isDeleted) {
-      map.delete(fm.memberId);
-      if (fm.id) map.delete(fm.id);
-    } else {
-      const key = fm.memberId || fm.id;
-      const existing = map.get(key) || {};
-      map.set(key, { ...existing, ...fm, id: fm.id || key });
-    }
-  });
-  return Array.from(map.values()).sort((a, b) => {
-    const numA = parseInt(a.memberId.replace(/\D/g, ''), 10) || 0;
-    const numB = parseInt(b.memberId.replace(/\D/g, ''), 10) || 0;
-    return numA - numB;
-  });
+const processFirestoreMembers = (firestoreMembers: Member[]): Member[] => {
+  return firestoreMembers
+    .filter((m) => !m.isDeleted)
+    .sort((a, b) => {
+      const numA = parseInt((a.memberId || '').replace(/\D/g, ''), 10) || 0;
+      const numB = parseInt((b.memberId || '').replace(/\D/g, ''), 10) || 0;
+      return numA - numB;
+    });
 };
 
 export const memberService = {
@@ -54,16 +39,16 @@ export const memberService = {
       const q = query(collection(db, MEMBERS_COLLECTION), orderBy('memberId', 'asc'));
       const snapshot = await getDocs(q);
       if (snapshot.empty) {
-        return isMasterCleared() ? [] : sampleMembers;
+        return [];
       }
       const firestoreMembers = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data()
       })) as Member[];
-      return mergeMembersWithMaster(firestoreMembers);
+      return processFirestoreMembers(firestoreMembers);
     } catch (error) {
-      console.warn('Error loading members from Firestore, falling back to master sample data:', error);
-      return isMasterCleared() ? [] : sampleMembers;
+      console.warn('Error loading members from Firestore:', error);
+      return [];
     }
   },
 
@@ -75,23 +60,23 @@ export const memberService = {
         q,
         (snapshot) => {
           if (snapshot.empty) {
-            callback(isMasterCleared() ? [] : sampleMembers);
+            callback([]);
           } else {
             const firestoreMembers = snapshot.docs.map((doc) => ({
               id: doc.id,
               ...doc.data()
             })) as Member[];
-            callback(mergeMembersWithMaster(firestoreMembers));
+            callback(processFirestoreMembers(firestoreMembers));
           }
         },
         (error) => {
           console.warn('Members snapshot listener error:', error);
-          callback(isMasterCleared() ? [] : sampleMembers);
+          callback([]);
         }
       );
     } catch (error) {
       console.warn('Failed to subscribe to members:', error);
-      callback(isMasterCleared() ? [] : sampleMembers);
+      callback([]);
       return () => {};
     }
   },
@@ -104,12 +89,10 @@ export const memberService = {
       if (docSnap.exists()) {
         return { id: docSnap.id, ...docSnap.data() } as Member;
       }
-      const localMember = sampleMembers.find((m) => m.memberId === memberId || m.id === memberId);
-      return localMember || null;
+      return null;
     } catch (error) {
       console.warn('Error getting member by ID:', error);
-      const localMember = sampleMembers.find((m) => m.memberId === memberId || m.id === memberId);
-      return localMember || null;
+      return null;
     }
   },
 

@@ -71,7 +71,7 @@ function AppContent() {
   }, [userProfile]);
 
   // Missing vouchers count
-  const missingVouchersCount = sampleExpensesJune2025.filter((e) => !e.voucher).length;
+  const missingVouchersCount = 0;
 
   const handleLogin = (user: UserProfile) => {
     setUserProfile(user);

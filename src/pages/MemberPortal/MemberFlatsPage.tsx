@@ -74,7 +74,7 @@ export const MemberFlatsPage: React.FC<MemberFlatsPageProps> = ({
   const memberFlats = resolveMemberFlats(member, currentUser, flats);
 
   const periodExp = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
-  const effectiveExp = periodExp.length > 0 ? periodExp : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
+  const effectiveExp = periodExp;
   
   const isMasterCleared = typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
   const { dualCalc, perFlatBill, totalUnits, totalBill, totalPaid, totalDue, isKh } = calculateMemberBillSummary(

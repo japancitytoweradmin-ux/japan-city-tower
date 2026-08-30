@@ -48,7 +48,7 @@ export const userService = {
       if (!membersSnap.empty) {
         memberList = membersSnap.docs.map(d => mapMemberToUserProfile({ id: d.id, ...d.data() }));
       } else {
-        memberList = sampleMembers.map(mapMemberToUserProfile);
+        memberList = [];
       }
 
       // 3. Ensure primary Super Admin exists
@@ -87,7 +87,7 @@ export const userService = {
 
       return result;
     } catch (err) {
-      console.warn('Error reading users from firestore, using sample members fallback:', err);
+      console.warn('Error reading users from firestore:', err);
       const adminUser: UserProfile = {
         id: 'usr-admin',
         name: 'Super Admin - Management Committee',
@@ -98,7 +98,7 @@ export const userService = {
         phone: '01711-000000',
         status: 'ACTIVE'
       };
-      return [adminUser, ...sampleMembers.map(mapMemberToUserProfile)];
+      return [adminUser];
     }
   },
 

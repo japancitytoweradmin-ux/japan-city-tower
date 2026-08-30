@@ -71,7 +71,7 @@ export const MonthlyBillsPage: React.FC = () => {
   const isMasterCleared = typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
   const totalUnits = isMasterCleared ? flats.length : (flats.length || 28);
   const periodExpenses = expenses.filter(e => (e.billingPeriodId || e.month) === billingPeriodId);
-  const effectiveExpenses = periodExpenses.length > 0 ? periodExpenses : (billingPeriodId === '2025-06' ? sampleExpensesJune2025 : []);
+  const effectiveExpenses = periodExpenses;
   
   const dualCalc = calculateDualBilling(effectiveExpenses, totalUnits);
   const totalExpense = dualCalc.totalExpense;

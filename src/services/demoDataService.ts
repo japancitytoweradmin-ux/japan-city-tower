@@ -513,26 +513,9 @@ export const demoDataService = {
     await demoDataService.seedDemoTransactions();
   },
 
-  // Auto-initialize master data if database is fresh and master hasn't been cleared
+  // Auto-initialize (Disabled auto-seed so clean database stays clean)
   initializeDatabaseIfEmpty: async (): Promise<void> => {
-    try {
-      if (typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true') {
-        return;
-      }
-      const masterStatusDoc = await getDoc(doc(db, 'settings', 'masterStatus'));
-      if (masterStatusDoc.exists() && masterStatusDoc.data()?.isMasterCleared === true) {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('jct_master_cleared', 'true');
-        }
-        return;
-      }
-      const flatsSnap = await getDocs(collection(db, 'flats'));
-      if (flatsSnap.empty) {
-        console.log('Initializing master data in Firestore...');
-        await demoDataService.seedMasterData();
-      }
-    } catch (error) {
-      console.warn('Auto initialization check error (offline/rules):', error);
-    }
+    // No auto-seeding on fresh database to respect user's real data input
+    return;
   }
 };

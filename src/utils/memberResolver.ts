@@ -171,18 +171,18 @@ export const calculateMemberBillSummary = (
   
   const totalUnits = memberFlats.length || activeMember.flatUnitNumbers?.length || 1;
   const perFlatBill = isKh
-    ? (dualCalc.totalExpense > 0 ? dualCalc.khalilur.perFlatBill : 1997)
-    : (dualCalc.totalExpense > 0 ? dualCalc.regularRoundedPerFlat : 1997);
+    ? (dualCalc.totalExpense > 0 ? dualCalc.khalilur.perFlatBill : 0)
+    : (dualCalc.totalExpense > 0 ? dualCalc.regularRoundedPerFlat : 0);
 
   let totalBill = 0;
   if (isKh) {
-    totalBill = dualCalc.totalExpense > 0 ? dualCalc.khalilur.totalBill : (totalUnits * 1997);
+    totalBill = dualCalc.totalExpense > 0 ? dualCalc.khalilur.totalBill : 0;
   } else {
     if (dualCalc.totalExpense > 0) {
       totalBill = totalUnits * dualCalc.regularRoundedPerFlat;
     } else {
       totalBill = memberFlats.reduce((sum, f) => {
-        const base = f.monthlyBaseBill && f.monthlyBaseBill > 0 ? f.monthlyBaseBill : 1997;
+        const base = f.monthlyBaseBill && f.monthlyBaseBill > 0 && f.monthlyBaseBill !== 1997 ? f.monthlyBaseBill : 0;
         return sum + base;
       }, 0);
     }
