@@ -20,7 +20,6 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { PageHeader } from '../../components/common/PageHeader';
-import { sampleMembers, sampleUnits } from '../../data/mockData';
 import { toBanglaNumber, formatTaka } from '../../utils/formatters';
 import { useToast } from '../../components/common/Toast';
 import { useTranslation } from '../../i18n/LanguageContext';
@@ -28,7 +27,12 @@ import { useBillingPeriod } from '../../contexts/BillingPeriodContext';
 import { whatsappService } from '../../services/whatsappService';
 import { templateService, DEFAULT_MESSAGE_TEMPLATES } from '../../services/templateService';
 import { smsService } from '../../services/smsService';
-import { MessageTemplate, CommunicationLog } from '../../types';
+import { memberService } from '../../services/memberService';
+import { flatService } from '../../services/flatService';
+import { expenseService } from '../../services/expenseService';
+import { buildingSettingsService, DEFAULT_BUILDING_INFO } from '../../services/buildingSettingsService';
+import { calculateDualBilling } from '../../utils/billingCalculator';
+import { Member, FlatUnit, ExpenseItem, CommunicationLog, BuildingInfoSettings } from '../../types';
 
 export const WhatsAppPage: React.FC = () => {
   const { showToast } = useToast();
@@ -37,12 +41,53 @@ export const WhatsAppPage: React.FC = () => {
   const currentPeriodId = billingPeriodId;
   const currentPeriodBangla = periodLabel;
 
+  // Real Firestore Data
+  const [dbMembers, setDbMembers] = useState<Member[]>([]);
+  const [dbFlats, setDbFlats] = useState<FlatUnit[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
+  const [buildingInfo, setBuildingInfo] = useState<BuildingInfoSettings>(DEFAULT_BUILDING_INFO);
+
+  // Subscriptions
+  useEffect(() => {
+    const unsubMembers = memberService.subscribeToMembers((loaded) => setDbMembers(loaded));
+    const unsubFlats = flatService.subscribeToFlats((loaded) => setDbFlats(loaded));
+    const unsubExpenses = expenseService.subscribeToExpenses((loaded) => setExpenses(loaded), billingPeriodId);
+    const unsubBuilding = buildingSettingsService.subscribeToBuildingInfo((info) => setBuildingInfo(info));
+    return () => {
+      unsubMembers();
+      unsubFlats();
+      unsubExpenses();
+      unsubBuilding();
+    };
+  }, [billingPeriodId]);
+
+  // Compute Dual Billing for current period
+  const dualCalc = useMemo(() => {
+    return calculateDualBilling(expenses, dbFlats.length || 28);
+  }, [expenses, dbFlats]);
+
+  // Members list with computed bills
+  const activeMembers = useMemo(() => {
+    if (dbMembers.length === 0) return [];
+    return dbMembers.map((m) => {
+      const isKh = m.memberId === 'JCT-006' || m.memberType === 'COMPANY';
+      const perFlat = isKh ? dualCalc.khalilur.perFlatBill : dualCalc.regularRoundedPerFlat;
+      const unitCount = m.flatUnitNumbers?.length || m.totalUnits || 1;
+      const calcBill = unitCount * perFlat;
+      return {
+        ...m,
+        computedBill: calcBill,
+        computedDue: m.totalDue !== undefined ? m.totalDue : calcBill,
+      };
+    });
+  }, [dbMembers, dualCalc]);
+
   // Tab State
   const [activeTab, setActiveTab] = useState<'single' | 'bulk' | 'history'>('single');
 
   // Single Sender State
-  const [selectedMember, setSelectedMember] = useState(sampleMembers[0]);
-  const [customPhone, setCustomPhone] = useState(selectedMember.phone);
+  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
+  const [customPhone, setCustomPhone] = useState('');
   const [selectedTemplateType, setSelectedTemplateType] = useState<'BILL' | 'RECEIPT' | 'DUE' | 'NOTICE'>('BILL');
   const [message, setMessage] = useState('');
 
@@ -53,33 +98,56 @@ export const WhatsAppPage: React.FC = () => {
   // History State
   const [waLogs, setWaLogs] = useState<CommunicationLog[]>([]);
 
+  // Active Member object
+  const selectedMember = useMemo(() => {
+    return activeMembers.find(m => m.memberId === selectedMemberId) || activeMembers[0] || null;
+  }, [activeMembers, selectedMemberId]);
+
+  // Auto-set selectedMemberId when members load
+  useEffect(() => {
+    if (activeMembers.length > 0 && (!selectedMemberId || !activeMembers.some(m => m.memberId === selectedMemberId))) {
+      setSelectedMemberId(activeMembers[0].memberId);
+      setCustomPhone(activeMembers[0].phone);
+    }
+  }, [activeMembers, selectedMemberId]);
+
   // Initialize and update template message
-  const updateMessageContent = (mem: typeof sampleMembers[0], type: 'BILL' | 'RECEIPT' | 'DUE' | 'NOTICE') => {
-    const flatStr = mem.flatUnitNumbers.join(', ');
+  const updateMessageContent = (mem: typeof selectedMember, type: 'BILL' | 'RECEIPT' | 'DUE' | 'NOTICE') => {
+    if (!mem) {
+      setMessage('কোনো সদস্য নির্বাচন করা হয়নি। সদস্য তালিকায় নতুন সদস্য যোগ করুন।');
+      return;
+    }
+
+    const bName = buildingInfo.buildingNameBangla || 'জাপান সিটি টাওয়ার';
+    const flatStr = (mem.flatUnitNumbers || []).join(', ');
     const monthStr = currentPeriodBangla;
+    const billAmount = mem.computedBill || dualCalc.regularRoundedPerFlat;
+    const dueAmount = mem.computedDue;
 
     if (type === 'BILL') {
       setMessage(
-        `আসসালামু আলাইকুম *${mem.name}*।\n\n🏢 *জাপান সিটি টাওয়ার – মাসিক কমন বিল বিবরণী*\n===================================\nফ্ল্যাট / ইউনিট: *${flatStr}*\nবিলিং মাস: *${monthStr}*\nধার্যকৃত বিল: *৳${(mem.totalBill || 1997).toLocaleString('bn-BD')}/-*\n\nঅনুগ্রহ করে আগামী ১০ তারিখের মধ্যে অফিস অথবা অনলাইনে বিল পরিশোধ করার জন্য অনুরোধ করা হলো।\n\nধন্যবাদান্তে,\nব্যবস্থাপনা পর্ষদ, জাপান সিটি টাওয়ার।`
+        `আসসালামু আলাইকুম *${mem.name}*।\n\n🏢 *${bName} – মাসিক কমন বিল বিবরণী*\n===================================\nফ্ল্যাট / ইউনিট: *${flatStr}*\nবিলিং মাস: *${monthStr}*\nধার্যকৃত বিল: *৳${billAmount.toLocaleString('bn-BD')}/-*\n\nঅনুগ্রহ করে আগামী ১০ তারিখের মধ্যে অফিস অথবা অনলাইনে বিল পরিশোধ করার জন্য অনুরোধ করা হলো।\n\nধন্যবাদান্তে,\nব্যবস্থাপনা পর্ষদ, ${bName}।`
       );
     } else if (type === 'RECEIPT') {
       setMessage(
-        `আসসালামু আলাইকুম *${mem.name}*।\n\n✅ *জাপান সিটি টাওয়ার – মানি রসিদ*\n===================================\nরসিদ নং: *REC-${selectedYear}${String(selectedMonth).padStart(2, '0')}-001*\nফ্ল্যাট / ইউনিট: *${flatStr}*\nবিলিং মাস: *${monthStr}*\nপরিশোধের পরিমাণ: *৳${(mem.totalPaid || 1997).toLocaleString('bn-BD')}/-*\nপরিশোধের মাধ্যম: *নগদ (Cash)*\nবকেয়া স্থিতি: *৳${(mem.totalDue || 0).toLocaleString('bn-BD')}/-*\n\nধন্যবাদান্তে,\nব্যবস্থাপনা কমিটি, জাপান সিটি টাওয়ার।`
+        `আসসালামু আলাইকুম *${mem.name}*।\n\n✅ *${bName} – মানি রসিদ*\n===================================\nরসিদ নং: *REC-${selectedYear}${String(selectedMonth).padStart(2, '0')}-001*\nফ্ল্যাট / ইউনিট: *${flatStr}*\nবিলিং মাস: *${monthStr}*\nপরিশোধের পরিমাণ: *৳${billAmount.toLocaleString('bn-BD')}/-*\nপরিশোধের মাধ্যম: *নগদ (Cash)*\nবকেয়া স্থিতি: *৳${(mem.totalDue || 0).toLocaleString('bn-BD')}/-*\n\nধন্যবাদান্তে,\nব্যবস্থাপনা কমিটি, ${bName}।`
       );
     } else if (type === 'DUE') {
       setMessage(
-        `জরুরি তাগিদ: আসসালামু আলাইকুম *${mem.name}*।\n\n⚠️ *জাপান সিটি টাওয়ার – বকেয়া বিল পরিশোধের নোটিশ*\n===================================\nফ্ল্যাট / ইউনিট: *${flatStr}*\nমোট বকেয়া পরিমাণ: *৳${(mem.totalDue || 1997).toLocaleString('bn-BD')}/-*\n\nবিলিং সাইকেল সচল রাখতে এবং বিল্ডিংয়ের সার্বিক রক্ষণাবেক্ষণ সেবা বজায় রাখতে অবিলম্বে বকেয়া পরিশোধ করার জন্য বিনীত অনুরোধ জানানো হচ্ছে।\n\nধন্যবাদান্তে,\nবিল্ডিং সুপারভাইজার, জাপান সিটি টাওয়ার।`
+        `জরুরি তাগিদ: আসসালামু আলাইকুম *${mem.name}*।\n\n⚠️ *${bName} – বকেয়া বিল পরিশোধের নোটিশ*\n===================================\nফ্ল্যাট / ইউনিট: *${flatStr}*\nমোট বকেয়া পরিমাণ: *৳${dueAmount.toLocaleString('bn-BD')}/-*\n\nবিলিং সাইকেল সচল রাখতে এবং বিল্ডিংয়ের সার্বিক রক্ষণাবেক্ষণ সেবা বজায় রাখতে অবিলম্বে বকেয়া পরিশোধ করার জন্য বিনীত অনুরোধ জানানো হচ্ছে।\n\nধন্যবাদান্তে,\nবিল্ডিং সুপারভাইজার, ${bName}।`
       );
     } else if (type === 'NOTICE') {
       setMessage(
-        `আসসালামু আলাইকুম *${mem.name}* সহ সকল সন্মানিত ফ্ল্যাট মালিক ও বাসিন্দাগণ।\n\n📢 *জাপান সিটি টাওয়ার – জরুরি নোটিশ*\n===================================\nআগামীকাল সকাল ৯:০০ টা থেকে দুপুর ১:০০ টা পর্যন্ত পানির রিজার্ভ ট্যাংক পরিষ্কার ও জেনারেটর সার্ভিসিং করা হবে। সাময়িক অসুবিধার জন্য আন্তরিক দুঃখ প্রকাশ করছি।\n\nধন্যবাদান্তে,\nব্যবস্থাপনা কমিটি, জাপান সিটি টাওয়ার।`
+        `আসসালামু আলাইকুম *${mem.name}* সহ সকল সন্মানিত ফ্ল্যাট মালিক ও বাসিন্দাগণ।\n\n📢 *${bName} – জরুরি নোটিশ*\n===================================\nআগামীকাল সকাল ৯:০০ টা থেকে দুপুর ১:০০ টা পর্যন্ত পানির রিজার্ভ ট্যাংক পরিষ্কার ও জেনারেটর সার্ভিসিং করা হবে। সাময়িক অসুবিধার জন্য আন্তরিক দুঃখ প্রকাশ করছি।\n\nধন্যবাদান্তে,\nব্যবস্থাপনা কমিটি, ${bName}।`
       );
     }
   };
 
   useEffect(() => {
-    updateMessageContent(selectedMember, selectedTemplateType);
-  }, [selectedMember, selectedTemplateType, currentPeriodBangla]);
+    if (selectedMember) {
+      updateMessageContent(selectedMember, selectedTemplateType);
+    }
+  }, [selectedMember, selectedTemplateType, currentPeriodBangla, dualCalc, buildingInfo]);
 
   useEffect(() => {
     const unsubscribe = smsService.subscribeToCommunicationLogs((logs) => {
@@ -89,28 +157,38 @@ export const WhatsAppPage: React.FC = () => {
   }, []);
 
   const handleMemberSelect = (memberId: string) => {
-    const mem = sampleMembers.find((m) => m.memberId === memberId);
+    const mem = activeMembers.find((m) => m.memberId === memberId);
     if (mem) {
-      setSelectedMember(mem);
-      setCustomPhone(mem.phone);
+      setSelectedMemberId(mem.memberId);
+      setCustomPhone(mem.phone || '');
       updateMessageContent(mem, selectedTemplateType);
     }
   };
 
   const handleOpenWhatsApp = async (targetMember = selectedMember, targetPhone = customPhone, targetMessage = message) => {
+    if (!targetMember) {
+      showToast('কোনো সদস্য নির্বাচন করা নেই', 'error');
+      return;
+    }
+    const phoneToSend = targetPhone || targetMember.phone;
+    if (!phoneToSend || phoneToSend.trim().length < 6) {
+      showToast('সদস্যের সঠিক মোবাইল নম্বর নেই', 'error');
+      return;
+    }
+
     const res = await whatsappService.sendWhatsAppMessage({
-      recipientMobile: targetPhone,
+      recipientMobile: phoneToSend,
       recipientName: targetMember.name,
       message: targetMessage,
       memberId: targetMember.memberId,
-      flatNumber: targetMember.flatUnitNumbers.join(', '),
+      flatNumber: (targetMember.flatUnitNumbers || []).join(', '),
       templateType: selectedTemplateType === 'BILL' ? 'BILL_PUBLISHED' : selectedTemplateType === 'RECEIPT' ? 'PAYMENT_CONFIRMATION' : 'DUE_REMINDER',
       billingPeriodId: currentPeriodId,
       sentBy: 'Admin',
     });
 
     window.open(res.url, '_blank');
-    showToast(`${targetMember.name} এর WhatsApp চ্যাট খোলা হয়েছে`, 'success');
+    showToast(`${targetMember.name} (${phoneToSend}) এর WhatsApp চ্যাট খোলা হয়েছে`, 'success');
   };
 
   const handleCopyMessage = () => {
@@ -119,18 +197,18 @@ export const WhatsAppPage: React.FC = () => {
   };
 
   const bulkMembersList = useMemo(() => {
-    return sampleMembers.filter(m => {
-      if (bulkFilter === 'DUE' && m.totalDue === 0) return false;
+    return activeMembers.filter(m => {
+      if (bulkFilter === 'DUE' && (m.computedDue || 0) <= 0) return false;
       if (bulkSearch.trim()) {
         const q = bulkSearch.toLowerCase();
         const nMatch = m.name.toLowerCase().includes(q);
-        const fMatch = m.flatUnitNumbers.some(f => f.toLowerCase().includes(q));
-        const pMatch = m.phone.includes(q);
+        const fMatch = (m.flatUnitNumbers || []).some(f => f.toLowerCase().includes(q));
+        const pMatch = (m.phone || '').includes(q);
         if (!nMatch && !fMatch && !pMatch) return false;
       }
       return true;
     });
-  }, [bulkFilter, bulkSearch]);
+  }, [activeMembers, bulkFilter, bulkSearch]);
 
   return (
     <div className="space-y-6 font-bengali">
@@ -164,7 +242,7 @@ export const WhatsAppPage: React.FC = () => {
           }`}
         >
           <Users className="w-3.5 h-3.5" />
-          <span>বাল্ক WhatsApp প্রেরণ তালিকা ({toBanglaNumber(sampleMembers.length)} জন)</span>
+          <span>বাল্ক WhatsApp প্রেরণ তালিকা ({toBanglaNumber(activeMembers.length)} জন)</span>
         </button>
 
         <button
@@ -203,13 +281,13 @@ export const WhatsAppPage: React.FC = () => {
                   সদস্য নির্বাচন করুন <span className="text-rose-500">*</span>
                 </label>
                 <select
-                  value={selectedMember.memberId}
+                  value={selectedMemberId}
                   onChange={(e) => handleMemberSelect(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-bold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500"
                 >
-                  {sampleMembers.map((m) => (
+                  {activeMembers.map((m) => (
                     <option key={m.id} value={m.memberId}>
-                      {m.name} ({m.flatUnitNumbers.join(', ')}) - {m.phone} | বকেয়া: ৳{m.totalDue.toLocaleString('bn-BD')}
+                      {m.name} ({(m.flatUnitNumbers || []).join(', ')}) - {m.phone} | বকেয়া: ৳{(m.computedDue || 0).toLocaleString('bn-BD')}
                     </option>
                   ))}
                 </select>
@@ -235,7 +313,7 @@ export const WhatsAppPage: React.FC = () => {
                   <div>
                     <p className="text-[10px] text-slate-500">ফ্ল্যাট ও ইউনিট</p>
                     <p className="font-bold text-slate-800 dark:text-slate-200">
-                      {selectedMember.flatUnitNumbers.join(', ')} ({selectedMember.memberType})
+                      {(selectedMember?.flatUnitNumbers || []).join(', ')} ({selectedMember?.memberType || 'ফ্ল্যাট মালিক'})
                     </p>
                   </div>
                 </div>
@@ -316,11 +394,11 @@ export const WhatsAppPage: React.FC = () => {
               {/* WhatsApp App Bar */}
               <div className="flex items-center gap-2.5 pb-2 border-b border-slate-800">
                 <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center font-bold text-xs">
-                  {selectedMember.name.charAt(0)}
+                  {selectedMember?.name ? selectedMember.name.charAt(0) : 'J'}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-xs truncate text-white">{selectedMember.name}</p>
-                  <p className="text-[10px] text-slate-400 font-mono">{customPhone}</p>
+                  <p className="font-bold text-xs truncate text-white">{selectedMember?.name || 'কোনো সদস্য নির্বাচিত নেই'}</p>
+                  <p className="text-[10px] text-slate-400 font-mono">{customPhone || '-'}</p>
                 </div>
                 <span className="text-[10px] text-emerald-400 font-bold">Online</span>
               </div>
@@ -369,7 +447,7 @@ export const WhatsAppPage: React.FC = () => {
                   bulkFilter === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600'
                 }`}
               >
-                সকল সদস্য ({toBanglaNumber(sampleMembers.length)})
+                সকল সদস্য ({toBanglaNumber(activeMembers.length)})
               </button>
               <button
                 type="button"
@@ -378,7 +456,7 @@ export const WhatsAppPage: React.FC = () => {
                   bulkFilter === 'DUE' ? 'bg-rose-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600'
                 }`}
               >
-                বকেয়া সদস্য ({toBanglaNumber(sampleMembers.filter(m => m.totalDue > 0).length)})
+                বকেয়া সদস্য ({toBanglaNumber(activeMembers.filter(m => (m.computedDue || m.totalDue || 0) > 0).length)})
               </button>
             </div>
           </div>

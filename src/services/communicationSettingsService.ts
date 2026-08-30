@@ -6,8 +6,32 @@ import { auditService } from './auditService';
 export const DEFAULT_COMMUNICATION_SETTINGS: CommunicationSettings = {
   smsEnabled: true,
   smsMaskingName: 'JAPAN TOWER',
-  smsProviderName: 'Bangladesh Masking / Non-Masking SMS Gateway',
+  smsProviderName: 'BulksmsBD / Custom SMS Gateway',
   smsBalance: 1420,
+
+  // Custom API Gateway Settings (BulksmsBD / Any SMS Provider)
+  smsGatewayProvider: 'BULKSMSBD',
+  smsApiUrl: 'http://bulksmsbd.net/api/smsapi',
+  smsApiKey: '',
+  smsSenderId: 'JAPAN TOWER',
+  smsHttpMethod: 'GET',
+  smsParamApiKey: 'api_key',
+  smsParamSenderId: 'sender_id',
+  smsParamMobile: 'number',
+  smsParamMessage: 'message',
+
+  // IP Whitelisting Settings
+  ipWhiteListingEnabled: false,
+  ipWhiteListEntries: [
+    {
+      id: 'ip-001',
+      ip: '103.150.12.5',
+      type: 'ALL',
+      note: 'Primary Ingress IP',
+      createdAt: new Date().toISOString()
+    }
+  ],
+
   autoSendPaymentSms: true,
   autoSendBillPublishedSms: true,
   autoSendDueReminderSms: false,

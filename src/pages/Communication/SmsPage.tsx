@@ -38,6 +38,8 @@ import { useBillingPeriod } from '../../contexts/BillingPeriodContext';
 import { smsService } from '../../services/smsService';
 import { templateService, DEFAULT_MESSAGE_TEMPLATES } from '../../services/templateService';
 import { communicationSettingsService } from '../../services/communicationSettingsService';
+import { memberService } from '../../services/memberService';
+import { flatService } from '../../services/flatService';
 import { 
   CommunicationLog, 
   CommunicationStatus, 
@@ -45,7 +47,10 @@ import {
   MessageTemplate, 
   MessageTemplateType, 
   RecipientTargetType,
-  CommunicationSettings 
+  CommunicationSettings,
+  IpWhiteListEntry,
+  Member,
+  FlatUnit
 } from '../../types';
 
 export const SmsPage: React.FC = () => {
@@ -54,6 +59,27 @@ export const SmsPage: React.FC = () => {
   const { selectedYear, selectedMonth, billingPeriodId, periodLabel } = useBillingPeriod();
   const currentPeriodId = billingPeriodId;
   const currentPeriodBangla = periodLabel;
+
+  // Real Firestore Members & Flats
+  const [dbMembers, setDbMembers] = useState<Member[]>([]);
+  const [dbFlats, setDbFlats] = useState<FlatUnit[]>([]);
+
+  useEffect(() => {
+    const unsubMem = memberService.subscribeToMembers((loaded) => setDbMembers(loaded));
+    const unsubFlats = flatService.subscribeToFlats((loaded) => setDbFlats(loaded));
+    return () => {
+      unsubMem();
+      unsubFlats();
+    };
+  }, []);
+
+  const activeMembers = useMemo(() => dbMembers.length > 0 ? dbMembers : sampleMembers, [dbMembers]);
+  const activeFlats = useMemo(() => dbFlats.length > 0 ? dbFlats : sampleUnits, [dbFlats]);
+
+  // IP Whitelisting Form State
+  const [newIpAddress, setNewIpAddress] = useState('');
+  const [newIpType, setNewIpType] = useState<'ALL' | 'API' | 'WEB'>('ALL');
+  const [newIpNote, setNewIpNote] = useState('');
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<'compose' | 'due-reminders' | 'templates' | 'logs' | 'settings'>('compose');
@@ -160,10 +186,10 @@ export const SmsPage: React.FC = () => {
     const tmpl = templates.find(t => t.id === tmplId);
     if (!tmpl) return;
 
-    const currentMember = sampleMembers.find(m => m.memberId === selectedMemberId) || sampleMembers[0];
+    const currentMember = activeMembers.find(m => m.memberId === selectedMemberId) || activeMembers[0] || sampleMembers[0];
     const newBody = templateService.replaceVariables(tmpl.body, {
-      memberName: currentMember.name,
-      flatNumber: currentMember.flatUnitNumbers.join(', '),
+      memberName: currentMember?.name || 'সম্মানিত সদস্য',
+      flatNumber: (currentMember?.flatUnitNumbers || []).join(', ') || 'ফ্ল্যাট',
       billingMonth: currentPeriodBangla.split(' ')[0],
       billingYear: String(selectedYear),
       billAmount: '১,৯৯৭',
@@ -190,24 +216,24 @@ export const SmsPage: React.FC = () => {
     }> = [];
 
     if (recipientTarget === 'SINGLE_MEMBER') {
-      const mem = sampleMembers.find(m => m.memberId === selectedMemberId);
+      const mem = activeMembers.find(m => m.memberId === selectedMemberId);
       if (mem) {
         list.push({
           memberId: mem.memberId,
           recipientName: mem.name,
           recipientMobile: mem.phone,
-          flatNumber: mem.flatUnitNumbers.join(', '),
+          flatNumber: (mem.flatUnitNumbers || []).join(', '),
           message: templateService.replaceVariables(messageBody, {
             memberName: mem.name,
-            flatNumber: mem.flatUnitNumbers.join(', '),
+            flatNumber: (mem.flatUnitNumbers || []).join(', '),
             billingMonth: currentPeriodBangla.split(' ')[0],
             billingYear: String(selectedYear),
           }),
         });
       }
     } else if (recipientTarget === 'SINGLE_FLAT') {
-      const flat = sampleUnits.find(u => u.unitNumber === selectedFlatNumber);
-      const mem = sampleMembers.find(m => m.flatUnitNumbers.includes(selectedFlatNumber));
+      const flat = activeFlats.find(u => u.unitNumber === selectedFlatNumber);
+      const mem = activeMembers.find(m => (m.flatUnitNumbers || []).includes(selectedFlatNumber));
       if (flat) {
         list.push({
           memberId: mem?.memberId,
@@ -223,15 +249,15 @@ export const SmsPage: React.FC = () => {
         });
       }
     } else if (recipientTarget === 'ALL_ACTIVE') {
-      sampleMembers.forEach(mem => {
+      activeMembers.forEach(mem => {
         list.push({
           memberId: mem.memberId,
           recipientName: mem.name,
           recipientMobile: mem.phone,
-          flatNumber: mem.flatUnitNumbers.join(', '),
+          flatNumber: (mem.flatUnitNumbers || []).join(', '),
           message: templateService.replaceVariables(messageBody, {
             memberName: mem.name,
-            flatNumber: mem.flatUnitNumbers.join(', '),
+            flatNumber: (mem.flatUnitNumbers || []).join(', '),
             billingMonth: currentPeriodBangla.split(' ')[0],
             billingYear: String(selectedYear),
           }),
@@ -239,19 +265,19 @@ export const SmsPage: React.FC = () => {
       });
     } else if (recipientTarget === 'DUE_MEMBERS') {
       // Due members calculation
-      const dueMembers = sampleMembers.filter(m => m.totalDue > 0);
+      const dueMembers = activeMembers.filter(m => (m.computedDue || m.totalDue || 0) > 0);
       dueMembers.forEach(mem => {
         list.push({
           memberId: mem.memberId,
           recipientName: mem.name,
           recipientMobile: mem.phone,
-          flatNumber: mem.flatUnitNumbers.join(', '),
+          flatNumber: (mem.flatUnitNumbers || []).join(', '),
           message: templateService.replaceVariables(messageBody, {
             memberName: mem.name,
-            flatNumber: mem.flatUnitNumbers.join(', '),
+            flatNumber: (mem.flatUnitNumbers || []).join(', '),
             billingMonth: currentPeriodBangla.split(' ')[0],
             billingYear: String(selectedYear),
-            dueAmount: mem.totalDue.toLocaleString('bn-BD'),
+            dueAmount: (mem.computedDue || mem.totalDue || 0).toLocaleString('bn-BD'),
           }),
         });
       });
@@ -378,12 +404,13 @@ export const SmsPage: React.FC = () => {
 
   // Due Members List for Due Tab
   const dueMembersList = useMemo(() => {
-    return sampleMembers.filter(m => {
-      if (m.totalDue <= minDueAmount) return false;
-      if (dueStatusFilter === 'DUE' && m.totalDue === 0) return false;
+    return activeMembers.filter(m => {
+      const due = m.computedDue || m.totalDue || 0;
+      if (due <= minDueAmount) return false;
+      if (dueStatusFilter === 'DUE' && due === 0) return false;
       return true;
     });
-  }, [minDueAmount, dueStatusFilter]);
+  }, [activeMembers, minDueAmount, dueStatusFilter]);
 
   // Handle Bulk Due SMS Send
   const handleSendDueReminders = async () => {
@@ -397,23 +424,61 @@ export const SmsPage: React.FC = () => {
     }
 
     const tmpl = templates.find(t => t.type === 'DUE_REMINDER') || templates[2];
-    const recipients = targets.map(m => ({
-      memberId: m.memberId,
-      recipientName: m.name,
-      recipientMobile: m.phone,
-      flatNumber: m.flatUnitNumbers.join(', '),
-      message: templateService.replaceVariables(tmpl.body, {
-        memberName: m.name,
-        flatNumber: m.flatUnitNumbers.join(', '),
-        billingMonth: currentPeriodBangla.split(' ')[0],
-        billingYear: String(selectedYear),
-        dueAmount: m.totalDue.toLocaleString('bn-BD'),
-      }),
-    }));
+    const recipients = targets.map(m => {
+      const dueVal = m.computedDue || m.totalDue || 0;
+      const flatStr = (m.flatUnitNumbers || []).join(', ');
+      return {
+        memberId: m.memberId,
+        recipientName: m.name,
+        recipientMobile: m.phone,
+        flatNumber: flatStr,
+        message: templateService.replaceVariables(tmpl.body, {
+          memberName: m.name,
+          flatNumber: flatStr,
+          billingMonth: currentPeriodBangla.split(' ')[0],
+          billingYear: String(selectedYear),
+          dueAmount: dueVal.toLocaleString('bn-BD'),
+        }),
+      };
+    });
 
     setPendingRecipients(recipients);
     setIsAgreedToTerms(false);
     setShowConfirmModal(true);
+  };
+
+  // IP Whitelist Helpers
+  const handleAddIpWhitelist = () => {
+    if (!settings) return;
+    if (!newIpAddress.trim()) {
+      showToast('অনুগ্রহ করে সঠিক IP এড্রেস টাইপ করুন', 'error');
+      return;
+    }
+    const newEntry: IpWhiteListEntry = {
+      id: `ip-${Date.now()}`,
+      ip: newIpAddress.trim(),
+      type: newIpType,
+      note: newIpNote.trim() || undefined,
+      createdAt: new Date().toISOString()
+    };
+    const currentList = settings.ipWhiteListEntries || [];
+    setSettings({
+      ...settings,
+      ipWhiteListEntries: [...currentList, newEntry]
+    });
+    setNewIpAddress('');
+    setNewIpNote('');
+    showToast(`IP ${newEntry.ip} হোয়াইটলিস্টে যুক্ত করা হয়েছে`, 'success');
+  };
+
+  const handleDeleteIpWhitelist = (id: string) => {
+    if (!settings) return;
+    const currentList = settings.ipWhiteListEntries || [];
+    setSettings({
+      ...settings,
+      ipWhiteListEntries: currentList.filter(item => item.id !== id)
+    });
+    showToast('IP হোয়াইটলিস্ট থেকে মুছে ফেলা হয়েছে', 'info');
   };
 
   // Save Settings Form
@@ -586,8 +651,8 @@ export const SmsPage: React.FC = () => {
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
-                    { id: 'ALL_ACTIVE', label: `সকল সক্রিয় সদস্য (${toBanglaNumber(sampleMembers.length)} জন)` },
-                    { id: 'DUE_MEMBERS', label: `সকল বকেয়া সদস্য (${toBanglaNumber(sampleMembers.filter(m => m.totalDue > 0).length)} জন)` },
+                    { id: 'ALL_ACTIVE', label: `সকল সক্রিয় সদস্য (${toBanglaNumber(activeMembers.length)} জন)` },
+                    { id: 'DUE_MEMBERS', label: `সকল বকেয়া সদস্য (${toBanglaNumber(activeMembers.filter(m => (m.computedDue || m.totalDue || 0) > 0).length)} জন)` },
                     { id: 'SINGLE_MEMBER', label: 'একজন নির্দিষ্ট সদস্য' },
                     { id: 'SINGLE_FLAT', label: 'একটি নির্দিষ্ট ফ্ল্যাট' },
                     { id: 'CUSTOM_MOBILE', label: 'কাস্টম মোবাইল নম্বর' },
@@ -619,9 +684,9 @@ export const SmsPage: React.FC = () => {
                     onChange={(e) => setSelectedMemberId(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl font-bold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-amber-500"
                   >
-                    {sampleMembers.map(m => (
+                    {activeMembers.map(m => (
                       <option key={m.id} value={m.memberId}>
-                        {m.name} ({m.flatUnitNumbers.join(', ')}) - {m.phone}
+                        {m.name} ({(m.flatUnitNumbers || []).join(', ')}) - {m.phone}
                       </option>
                     ))}
                   </select>
@@ -638,7 +703,7 @@ export const SmsPage: React.FC = () => {
                     onChange={(e) => setSelectedFlatNumber(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl font-bold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-amber-500"
                   >
-                    {sampleUnits.map(u => (
+                    {activeFlats.map(u => (
                       <option key={u.id} value={u.unitNumber}>
                         ফ্ল্যাট {u.unitNumber} ({u.floor} তলা) - মালিক: {u.ownerName} ({u.ownerPhone})
                       </option>
@@ -891,19 +956,19 @@ export const SmsPage: React.FC = () => {
                           {m.name}
                         </td>
                         <td className="p-3.5 font-mono text-slate-700 dark:text-slate-300">
-                          {m.flatUnitNumbers.join(', ')}
+                          {(m.flatUnitNumbers || []).join(', ')}
                         </td>
                         <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400">
                           {m.phone}
                         </td>
                         <td className="p-3.5 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
-                          ৳{toBanglaNumber(m.totalBill)}
+                          ৳{toBanglaNumber(m.totalBill || m.computedBill || 0)}
                         </td>
                         <td className="p-3.5 text-right font-mono text-emerald-600 font-bold">
-                          ৳{toBanglaNumber(m.totalPaid)}
+                          ৳{toBanglaNumber(m.totalPaid || m.computedPaid || 0)}
                         </td>
                         <td className="p-3.5 text-right font-mono font-black text-rose-600 dark:text-rose-400">
-                          ৳{toBanglaNumber(m.totalDue)}
+                          ৳{toBanglaNumber(m.computedDue || m.totalDue || 0)}
                         </td>
                         <td className="p-3.5 text-center">
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
@@ -917,17 +982,17 @@ export const SmsPage: React.FC = () => {
                               const tmpl = templates.find(t => t.type === 'DUE_REMINDER') || templates[2];
                               const msg = templateService.replaceVariables(tmpl.body, {
                                 memberName: m.name,
-                                flatNumber: m.flatUnitNumbers.join(', '),
+                                flatNumber: (m.flatUnitNumbers || []).join(', '),
                                 billingMonth: currentPeriodBangla.split(' ')[0],
                                 billingYear: String(selectedYear),
-                                dueAmount: m.totalDue.toLocaleString('bn-BD'),
+                                dueAmount: (m.computedDue || m.totalDue || 0).toLocaleString('bn-BD'),
                               });
                               const res = await smsService.sendSms({
                                 recipientMobile: m.phone,
                                 recipientName: m.name,
                                 message: msg,
                                 memberId: m.memberId,
-                                flatNumber: m.flatUnitNumbers.join(', '),
+                                flatNumber: (m.flatUnitNumbers || []).join(', '),
                                 templateType: 'DUE_REMINDER',
                                 billingPeriodId: currentPeriodId,
                                 sentBy: 'Admin',
@@ -1163,6 +1228,319 @@ export const SmsPage: React.FC = () => {
       {/* TAB 5: SETTINGS & AUTOMATION */}
       {activeTab === 'settings' && settings && (
         <form onSubmit={handleSaveSettings} className="space-y-6">
+          {/* 1. API GATEWAY CONFIGURATION */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Smartphone className="w-5 h-5 text-amber-500" />
+                  <span>SMS API গেটওয়ে ও সার্ভিস প্রোভাইডার সেটআপ</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  BulksmsBD, Greenweb, Teletalk বা যেকোনো থার্ড-পার্টি কোম্পানির HTTP REST API ইন্টিগ্রেশন
+                </p>
+              </div>
+              <span className="px-3 py-1 bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold rounded-full border border-amber-200 text-xs">
+                {settings.smsProviderName || 'BulksmsBD / Custom Gateway'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  প্রোভাইডার টাইপ / সার্ভিস নাম
+                </label>
+                <select
+                  value={settings.smsGatewayProvider || 'BULKSMSBD'}
+                  onChange={(e) => setSettings({ ...settings, smsGatewayProvider: e.target.value as any })}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
+                >
+                  <option value="BULKSMSBD">BulksmsBD API Gateway (bulksmsbd.net)</option>
+                  <option value="GREENWEB">Greenweb SMS API (greenweb.com.bd)</option>
+                  <option value="TELETALK">Teletalk SMS Gateway</option>
+                  <option value="GENERIC_HTTP">Generic HTTP GET/POST Custom Provider</option>
+                  <option value="CUSTOM">Custom Enterprise API</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  API Endpoint URL
+                </label>
+                <input
+                  type="text"
+                  value={settings.smsApiUrl || 'http://bulksmsbd.net/api/smsapi'}
+                  onChange={(e) => setSettings({ ...settings, smsApiUrl: e.target.value })}
+                  placeholder="e.g. http://bulksmsbd.net/api/smsapi"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  API Key / Secret Token
+                </label>
+                <input
+                  type="password"
+                  value={settings.smsApiKey || ''}
+                  onChange={(e) => setSettings({ ...settings, smsApiKey: e.target.value })}
+                  placeholder="আপনার কেনা API Key এখানে দিন"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Sender ID / Masking নাম
+                </label>
+                <input
+                  type="text"
+                  value={settings.smsSenderId || 'JAPAN TOWER'}
+                  onChange={(e) => setSettings({ ...settings, smsSenderId: e.target.value })}
+                  placeholder="e.g. JAPAN TOWER"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  HTTP Request Method
+                </label>
+                <select
+                  value={settings.smsHttpMethod || 'GET'}
+                  onChange={(e) => setSettings({ ...settings, smsHttpMethod: e.target.value as any })}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
+                >
+                  <option value="GET">HTTP GET Query Parameters</option>
+                  <option value="POST">HTTP POST Form Body / JSON</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  API Key Param Name
+                </label>
+                <input
+                  type="text"
+                  value={settings.smsParamApiKey || 'api_key'}
+                  onChange={(e) => setSettings({ ...settings, smsParamApiKey: e.target.value })}
+                  placeholder="e.g. api_key or token"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Sender ID Param Name
+                </label>
+                <input
+                  type="text"
+                  value={settings.smsParamSenderId || 'sender_id'}
+                  onChange={(e) => setSettings({ ...settings, smsParamSenderId: e.target.value })}
+                  placeholder="e.g. sender_id or type"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Mobile Number Param Name
+                </label>
+                <input
+                  type="text"
+                  value={settings.smsParamMobile || 'number'}
+                  onChange={(e) => setSettings({ ...settings, smsParamMobile: e.target.value })}
+                  placeholder="e.g. number or mobile"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Message Text Param Name
+                </label>
+                <input
+                  type="text"
+                  value={settings.smsParamMessage || 'message'}
+                  onChange={(e) => setSettings({ ...settings, smsParamMessage: e.target.value })}
+                  placeholder="e.g. message or msg"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 2. IP WHITE LISTING SETTINGS (Exact layout requested by user) */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                  <span>IP White Listing Setting</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  নিরাপত্তা সুরক্ষায় নির্দিষ্ট IP ছাড়া অনাকাঙ্ক্ষিত API/WEB এক্সেস প্রতিরোধ করুন
+                </p>
+              </div>
+
+              {/* Source IP Checking Toggle */}
+              <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800/80 p-2 rounded-2xl border border-slate-200 dark:border-slate-700">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Source IP Checking* :</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setSettings({ ...settings, ipWhiteListingEnabled: true })}
+                    className={`px-3 py-1 rounded-xl font-bold text-xs transition-all ${
+                      settings.ipWhiteListingEnabled
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    Enable
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettings({ ...settings, ipWhiteListingEnabled: false })}
+                    className={`px-3 py-1 rounded-xl font-bold text-xs transition-all ${
+                      !settings.ipWhiteListingEnabled
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    Disable
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Create IP White Listing Form */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
+              <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                Create IP White Listing
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Type * :
+                  </label>
+                  <div className="flex items-center gap-1.5 pt-1">
+                    {(['ALL', 'API', 'WEB'] as const).map((t) => (
+                      <label key={t} className="flex items-center gap-1 cursor-pointer font-bold text-slate-700 dark:text-slate-300">
+                        <input
+                          type="radio"
+                          name="ipType"
+                          value={t}
+                          checked={newIpType === t}
+                          onChange={() => setNewIpType(t)}
+                          className="w-3.5 h-3.5 text-emerald-600"
+                        />
+                        <span>{t}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    IP * :
+                  </label>
+                  <input
+                    type="text"
+                    value={newIpAddress}
+                    onChange={(e) => setNewIpAddress(e.target.value)}
+                    placeholder="Enter IP (e.g. 103.150.12.5)"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Note / বিবরণ (Optional):
+                  </label>
+                  <input
+                    type="text"
+                    value={newIpNote}
+                    onChange={(e) => setNewIpNote(e.target.value)}
+                    placeholder="e.g. BulksmsBD Ingress Server"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs"
+                  />
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={handleAddIpWhitelist}
+                    className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                  >
+                    <span>+ IP যুক্ত করুন</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Whitelisted IP Table */}
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700">
+                  <tr>
+                    <th className="p-3">অনুমোদিত IP এড্রেস</th>
+                    <th className="p-3">Type</th>
+                    <th className="p-3">বিবরণ / নোট</th>
+                    <th className="p-3">যুক্ত করার সময়</th>
+                    <th className="p-3 text-right">অ্যাকশন</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {(!settings.ipWhiteListEntries || settings.ipWhiteListEntries.length === 0) ? (
+                    <tr>
+                      <td colSpan={5} className="p-6 text-center text-slate-400 text-xs">
+                        বর্তমানে কোনো IP হোয়াইটলিস্টে যুক্ত করা নেই।
+                      </td>
+                    </tr>
+                  ) : (
+                    settings.ipWhiteListEntries.map((item) => (
+                      <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-850">
+                        <td className="p-3 font-mono font-bold text-slate-900 dark:text-white">
+                          {item.ip}
+                        </td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                            item.type === 'ALL'
+                              ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                              : item.type === 'API'
+                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                              : 'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            {item.type}
+                          </span>
+                        </td>
+                        <td className="p-3 text-slate-600 dark:text-slate-300">
+                          {item.note || '—'}
+                        </td>
+                        <td className="p-3 text-slate-500 font-mono text-[10px]">
+                          {new Date(item.createdAt).toLocaleString()}
+                        </td>
+                        <td className="p-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteIpWhitelist(item.id)}
+                            className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-950 dark:text-rose-300 rounded-lg font-bold text-[10px]"
+                          >
+                            মুছে ফেলুন
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* 3. AUTOMATION & NOTIFICATION SETTINGS */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5">
             <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Settings className="w-4 h-4 text-amber-500" />
@@ -1174,7 +1552,7 @@ export const SmsPage: React.FC = () => {
               <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
                 <div className="flex items-center justify-between">
                   <h4 className="font-bold text-slate-900 dark:text-white text-sm">
-                    এসএমএস গেটওয়ে কনফিগারেশন
+                    এসএমএস ট্রিগার
                   </h4>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input

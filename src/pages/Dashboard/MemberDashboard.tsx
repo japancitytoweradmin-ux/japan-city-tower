@@ -36,6 +36,9 @@ import { Modal } from '../../components/common/Modal';
 import { resolveActiveMember, resolveMemberFlats, calculateMemberBillSummary } from '../../utils/memberResolver';
 import { MemberSelectorBar } from '../../components/common/MemberSelectorBar';
 
+import { buildingSettingsService, DEFAULT_OFFICE_CONFIG } from '../../services/buildingSettingsService';
+import { OfficeConfigSettings } from '../../types';
+
 interface MemberDashboardProps {
   currentUser: UserProfile;
   onViewReceipt: (payment: PaymentRecord) => void;
@@ -55,6 +58,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [officeConfig, setOfficeConfig] = useState<OfficeConfigSettings>(DEFAULT_OFFICE_CONFIG);
   const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
   const [overrideMember, setOverrideMember] = useState<Member | null>(null);
 
@@ -74,12 +78,12 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
     const unsubMem = memberService.subscribeToMembers((loaded) => setMembers(loaded));
     const unsubFlats = flatService.subscribeToFlats((loaded) => setFlats(loaded));
     
-    // Member-scoped payments with real-time updates
+    // Member-scoped payments with real-time updates (load all history for recent payments list)
     const targetMemberId = activeMember.memberId || currentUser.memberId || 'JCT-001';
     const unsubPay = paymentService.subscribeToMemberPayments(
       targetMemberId,
       (loaded) => setPayments(loaded),
-      billingPeriodId,
+      undefined,
       activeMember.flatUnitNumbers || currentUser.flatUnits
     );
 
@@ -88,6 +92,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
     }, billingPeriodId);
 
     const unsubNotices = noticeService.subscribeToPublishedNotices((loaded) => setNotices(loaded));
+    const unsubOffice = buildingSettingsService.subscribeToOfficeConfig((loaded) => setOfficeConfig(loaded));
 
     return () => {
       unsubMem();
@@ -95,6 +100,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
       unsubPay();
       unsubExpenses();
       unsubNotices();
+      unsubOffice();
     };
   }, [activeMember.memberId, activeMember.flatUnitNumbers, currentUser.memberId, currentUser.flatUnits, billingPeriodId]);
 
@@ -114,7 +120,8 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
     memberFlats,
     memberPayments,
     effectiveExp,
-    isMasterCleared ? flats.length : (flats.length || 28)
+    isMasterCleared ? flats.length : (flats.length || 28),
+    billingPeriodId
   );
 
   const hasOverdueUnit = memberFlats.some(f => f.paymentStatus === 'OVERDUE');
@@ -565,11 +572,11 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
           <div className="pt-3 border-t border-slate-800 space-y-2 text-xs text-slate-400">
             <div className="flex items-center gap-2">
               <PhoneCall className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>{isBangla ? 'ম্যানেজমেন্ট অফিস: রুম #১০১, নিচতলা' : 'Office: Room #101, Ground Floor'}</span>
+              <span>{officeConfig.officeName || (isBangla ? 'ম্যানেজমেন্ট অফিস, নিচতলা' : 'Management Office, Ground Floor')}</span>
             </div>
             <div className="flex items-center gap-2">
               <PhoneCall className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>{isBangla ? 'হটলাইন: ০১৭০০-০০০০০০' : 'Hotline: 01700-000000'}</span>
+              <span>{isBangla ? 'হটলাইন' : 'Hotline'}: {officeConfig.mobile || officeConfig.phone}</span>
             </div>
           </div>
         </div>

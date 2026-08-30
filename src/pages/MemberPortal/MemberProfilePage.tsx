@@ -21,6 +21,9 @@ import { useTranslation } from '../../i18n/LanguageContext';
 import { memberService } from '../../services/memberService';
 import { flatService } from '../../services/flatService';
 import { notificationService } from '../../services/notificationService';
+import { buildingSettingsService, DEFAULT_OFFICE_CONFIG, DEFAULT_BUILDING_INFO } from '../../services/buildingSettingsService';
+import { resolveActiveMember, resolveMemberFlats } from '../../utils/memberResolver';
+import { OfficeConfigSettings, BuildingInfoSettings } from '../../types';
 
 interface MemberProfilePageProps {
   currentUser: UserProfile;
@@ -31,9 +34,11 @@ export const MemberProfilePage: React.FC<MemberProfilePageProps> = ({
 }) => {
   const { t, formatNumber, isBangla } = useTranslation();
 
-  const [members, setMembers] = useState<Member[]>(sampleMembers);
-  const [flats, setFlats] = useState<FlatUnit[]>(sampleUnits);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [flats, setFlats] = useState<FlatUnit[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [officeConfig, setOfficeConfig] = useState<OfficeConfigSettings>(DEFAULT_OFFICE_CONFIG);
+  const [buildingInfo, setBuildingInfo] = useState<BuildingInfoSettings>(DEFAULT_BUILDING_INFO);
 
   useEffect(() => {
     const unsubMem = memberService.subscribeToMembers((loaded) => setMembers(loaded));
@@ -43,22 +48,20 @@ export const MemberProfilePage: React.FC<MemberProfilePageProps> = ({
       currentUser.id,
       currentUser.memberId
     );
+    const unsubOffice = buildingSettingsService.subscribeToOfficeConfig((loaded) => setOfficeConfig(loaded));
+    const unsubBuilding = buildingSettingsService.subscribeToBuildingInfo((loaded) => setBuildingInfo(loaded));
 
     return () => {
       unsubMem();
       unsubFlats();
       unsubNotif();
+      unsubOffice();
+      unsubBuilding();
     };
   }, [currentUser.id, currentUser.memberId]);
 
-  const member = members.find(
-    (m) => m.memberId === (currentUser.memberId || 'JCT-006') || m.id === currentUser.id
-  ) || sampleMembers[5];
-
-  const memberFlats = flats.filter((u) => 
-    (member.flatUnitNumbers || []).includes(u.unitNumber) || 
-    (currentUser.flatUnits || []).includes(u.unitNumber)
-  );
+  const activeMember = resolveActiveMember(currentUser, members);
+  const memberFlats = resolveMemberFlats(activeMember, currentUser, flats);
 
   return (
     <div className="space-y-6 font-bengali">
@@ -74,37 +77,37 @@ export const MemberProfilePage: React.FC<MemberProfilePageProps> = ({
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs p-6 space-y-6">
           <div className="flex flex-col items-center text-center space-y-3">
             <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center text-slate-950 font-black text-2xl shadow-lg shadow-amber-500/20">
-              {member.name.charAt(0)}
+              {activeMember.name ? activeMember.name.charAt(0) : 'M'}
             </div>
 
             <div>
               <h3 className="text-xl font-black text-slate-900 dark:text-white">
-                {isBangla ? (member.banglaName || member.name) : member.name}
+                {isBangla ? (activeMember.banglaName || activeMember.name) : activeMember.name}
               </h3>
               <p className="text-xs text-amber-600 dark:text-amber-400 font-mono font-bold mt-0.5">
-                Member ID: {member.memberId}
+                Member ID: {activeMember.memberId}
               </p>
             </div>
 
             <span className="px-3 py-1 bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-xs font-bold rounded-full border border-amber-200 dark:border-amber-800">
-              {isBangla ? (member.memberTypeBangla || 'স্থায়ী ফ্ল্যাট মালিক') : member.memberType}
+              {isBangla ? (activeMember.memberTypeBangla || 'স্থায়ী ফ্ল্যাট মালিক') : activeMember.memberType}
             </span>
           </div>
 
           <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-3 text-xs">
             <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
               <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-              <span className="font-mono">{member.phone || currentUser.phone || '০১৭০০-০০০০০০'}</span>
+              <span className="font-mono">{activeMember.phone || currentUser.phone || officeConfig.mobile}</span>
             </div>
 
             <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
               <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-              <span className="font-mono">{member.email || currentUser.email || 'member@japancitytower.com'}</span>
+              <span className="font-mono">{activeMember.email || currentUser.email || officeConfig.email}</span>
             </div>
 
             <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
               <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-              <span>জাপান সিটি টাওয়ার, ঢাকা</span>
+              <span>{buildingInfo.buildingNameBangla || 'জাপান সিটি টাওয়ার'}, ঢাকা</span>
             </div>
           </div>
 
@@ -209,8 +212,8 @@ export const MemberProfilePage: React.FC<MemberProfilePageProps> = ({
             </p>
 
             <div className="pt-2 flex flex-wrap items-center gap-4 text-xs text-amber-300/90 font-medium">
-              <span>🏢 রুম #১০১, নিচতলা</span>
-              <span>📞 হটলাইন: ০১৭০০-০০০০০০</span>
+              <span>🏢 {officeConfig.officeName || 'ম্যানেজমেন্ট অফিস, নিচতলা'}</span>
+              <span>📞 {isBangla ? 'হটলাইন' : 'Hotline'}: {officeConfig.mobile || officeConfig.phone}</span>
             </div>
           </div>
         </div>

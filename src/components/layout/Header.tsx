@@ -97,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2.5">
+    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2.5 no-print print:hidden">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2.5">
         {/* Row 1 / Left Side: Menu toggle, App Logo, Title & Billing Period */}
         <div className="flex items-center justify-between md:justify-start gap-2 sm:gap-4">

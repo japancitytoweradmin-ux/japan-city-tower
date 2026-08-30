@@ -26,9 +26,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-bengali">
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-bengali print:h-auto print:overflow-visible print:bg-white">
       {/* Desktop Left Sidebar */}
-      <div className="hidden lg:block h-full shrink-0">
+      <div className="hidden lg:block h-full shrink-0 no-print print:hidden">
         <Sidebar
           currentTab={currentTab}
           onTabChange={onTabChange}
@@ -40,7 +40,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       {/* Mobile Drawer Overlay */}
       {mobileMenuOpen && (
         <div 
-          className="lg:hidden fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex"
+          className="lg:hidden fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex no-print print:hidden"
           onClick={() => setMobileMenuOpen(false)}
         >
           <div 
@@ -59,27 +59,31 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       )}
 
       {/* Main Content Viewport */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden print:h-auto print:overflow-visible">
         {/* Top Header */}
-        <Header
-          currentUser={currentUser}
-          onSwitchUser={onSwitchUser}
-          onLogout={onLogout}
-          onToggleMobileMenu={() => setMobileMenuOpen(true)}
-        />
+        <div className="no-print print:hidden">
+          <Header
+            currentUser={currentUser}
+            onSwitchUser={onSwitchUser}
+            onLogout={onLogout}
+            onToggleMobileMenu={() => setMobileMenuOpen(true)}
+          />
+        </div>
 
         {/* Dynamic Page Scroll Area */}
-        <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-8">
-          <div className="max-w-7xl mx-auto">{children}</div>
+        <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-8 print:p-0 print:m-0 print:overflow-visible print:h-auto">
+          <div className="max-w-7xl mx-auto print:max-w-none print:w-full">{children}</div>
         </main>
 
         {/* Mobile Bottom Navigation */}
-        <MobileBottomNav
-          currentTab={currentTab}
-          onTabChange={onTabChange}
-          onOpenMenuDrawer={() => setMobileMenuOpen(true)}
-          userRole={currentUser.role}
-        />
+        <div className="no-print print:hidden">
+          <MobileBottomNav
+            currentTab={currentTab}
+            onTabChange={onTabChange}
+            onOpenMenuDrawer={() => setMobileMenuOpen(true)}
+            userRole={currentUser.role}
+          />
+        </div>
       </div>
     </div>
   );

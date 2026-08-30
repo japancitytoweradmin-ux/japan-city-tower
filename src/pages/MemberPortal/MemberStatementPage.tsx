@@ -22,7 +22,8 @@ import { flatService } from '../../services/flatService';
 import { expenseService } from '../../services/expenseService';
 import { resolveActiveMember, resolveMemberFlats, calculateMemberBillSummary } from '../../utils/memberResolver';
 import { MemberSelectorBar } from '../../components/common/MemberSelectorBar';
-import { ExpenseItem } from '../../types';
+import { ExpenseItem, BuildingInfoSettings } from '../../types';
+import { buildingSettingsService, DEFAULT_BUILDING_INFO } from '../../services/buildingSettingsService';
 
 interface MemberStatementPageProps {
   currentUser: UserProfile;
@@ -39,6 +40,7 @@ export const MemberStatementPage: React.FC<MemberStatementPageProps> = ({
   const [flats, setFlats] = useState<FlatUnit[]>(sampleUnits);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [overrideMember, setOverrideMember] = useState<Member | null>(null);
+  const [buildingInfo, setBuildingInfo] = useState<BuildingInfoSettings>(DEFAULT_BUILDING_INFO);
 
   const [selectedYear, setSelectedYear] = useState<number>(currentActiveYear || 2026);
   const [selectedFlat, setSelectedFlat] = useState<string>('ALL');
@@ -56,12 +58,14 @@ export const MemberStatementPage: React.FC<MemberStatementPageProps> = ({
     const unsubMem = memberService.subscribeToMembers((loaded) => setMembers(loaded));
     const unsubFlats = flatService.subscribeToFlats((loaded) => setFlats(loaded));
     const unsubExp = expenseService.subscribeToExpenses((loaded) => setExpenses(loaded), billingPeriodId);
+    const unsubBld = buildingSettingsService.subscribeToBuildingInfo((info) => setBuildingInfo(info));
 
     return () => {
       unsubPay();
       unsubMem();
       unsubFlats();
       unsubExp();
+      unsubBld();
     };
   }, [activeMember.memberId, activeMember.flatUnitNumbers, currentUser.memberId, currentUser.flatUnits, billingPeriodId]);
 
@@ -166,15 +170,25 @@ export const MemberStatementPage: React.FC<MemberStatementPageProps> = ({
         <div className="border-b-2 border-slate-900 pb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-center font-bold">
-                <Building2 className="w-6 h-6" />
-              </div>
+              {buildingInfo.logoUrl ? (
+                <img 
+                  src={buildingInfo.logoUrl} 
+                  alt="Logo" 
+                  className="w-10 h-10 object-contain rounded-xl border border-slate-200 p-0.5" 
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-center font-bold">
+                  <Building2 className="w-6 h-6" />
+                </div>
+              )}
               <div>
                 <h2 className="text-xl font-black tracking-tight text-slate-900">
-                  জাপান সিটি টাওয়ার ফ্ল্যাট মালিক সমিতি
+                  {isBangla ? (buildingInfo.buildingNameBangla || 'জাপান সিটি টাওয়ার ফ্ল্যাট মালিক সমিতি') : (buildingInfo.buildingNameEnglish || 'Japan City Tower')}
                 </h2>
                 <p className="text-xs text-slate-600">
-                  Japan City Tower Flat Owners Association • Common Bill Ledger
+                  {isBangla 
+                    ? `${buildingInfo.buildingNameBangla || 'জাপান সিটি টাওয়ার'} • ${buildingInfo.addressBangla || buildingInfo.addressEnglish || ''}` 
+                    : `${buildingInfo.buildingNameEnglish || 'Japan City Tower'} Flat Owners Association • Common Bill Ledger`}
                 </p>
               </div>
             </div>

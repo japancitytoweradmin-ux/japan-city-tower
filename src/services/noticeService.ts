@@ -65,32 +65,32 @@ export const noticeService = {
 
   subscribeToPublishedNotices: (callback: (notices: Notice[]) => void) => {
     try {
-      const q = query(
-        collection(db, NOTICES_COLLECTION), 
-        where('status', '==', 'PUBLISHED'),
-        orderBy('publishedDate', 'desc')
-      );
+      const q = query(collection(db, NOTICES_COLLECTION));
       return onSnapshot(
         q,
         (snapshot) => {
-          if (snapshot.empty) {
-            callback([]);
-          } else {
-            const notices = snapshot.docs.map((doc) => ({
+          let list: Notice[] = [];
+          if (!snapshot.empty) {
+            list = snapshot.docs.map((doc) => ({
               id: doc.id,
               ...doc.data()
             })) as Notice[];
-            callback(notices);
+            list = list.filter(n => n.status === 'PUBLISHED');
+            list.sort((a, b) => new Date(b.publishedDate || 0).getTime() - new Date(a.publishedDate || 0).getTime());
           }
+          if (list.length === 0) {
+            list = sampleNotices.filter(n => n.status === 'PUBLISHED');
+          }
+          callback(list);
         },
         (error) => {
           console.warn('Published notices listener error:', error);
-          callback([]);
+          callback(sampleNotices.filter(n => n.status === 'PUBLISHED'));
         }
       );
     } catch (error) {
       console.warn('Failed to subscribe to published notices:', error);
-      callback([]);
+      callback(sampleNotices.filter(n => n.status === 'PUBLISHED'));
       return () => {};
     }
   },

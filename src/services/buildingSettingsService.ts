@@ -194,6 +194,29 @@ export const buildingSettingsService = {
     }
   },
 
+  subscribeToOfficeConfig: (callback: (info: OfficeConfigSettings) => void) => {
+    try {
+      return onSnapshot(
+        doc(db, 'settings', 'office_config'),
+        (snap) => {
+          if (snap.exists()) {
+            callback({ ...DEFAULT_OFFICE_CONFIG, ...snap.data() } as OfficeConfigSettings);
+          } else {
+            callback(DEFAULT_OFFICE_CONFIG);
+          }
+        },
+        (error) => {
+          console.warn('Office config subscription error:', error);
+          callback(DEFAULT_OFFICE_CONFIG);
+        }
+      );
+    } catch (error) {
+      console.warn('Failed to subscribe to office config:', error);
+      callback(DEFAULT_OFFICE_CONFIG);
+      return () => {};
+    }
+  },
+
   updateOfficeConfig: async (
     updates: Partial<OfficeConfigSettings>,
     userId = 'usr-admin',

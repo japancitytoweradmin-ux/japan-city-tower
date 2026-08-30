@@ -46,12 +46,16 @@ export const resolveActiveMember = (
 
   const matched = availableMembers.find((m) => {
     // 1. Member ID match
-    if (currentMemberIdNorm && normalizeIdentifier(m.memberId) === currentMemberIdNorm) {
+    const mIdNorm = normalizeIdentifier(m.memberId);
+    if (currentMemberIdNorm && mIdNorm && (mIdNorm === currentMemberIdNorm || mIdNorm.endsWith(currentMemberIdNorm) || currentMemberIdNorm.endsWith(mIdNorm))) {
       return true;
     }
     // 2. Flat unit match
     if (currentFlatsNorm.length > 0) {
-      const memberFlatsNorm = (m.flatUnitNumbers || []).map(normalizeIdentifier);
+      const memberFlatsNorm = [
+        ...(m.flatUnitNumbers || []),
+        ...((m as any).unitNumber ? [(m as any).unitNumber] : [])
+      ].map(normalizeIdentifier);
       if (memberFlatsNorm.some((f) => currentFlatsNorm.includes(f))) {
         return true;
       }
@@ -64,7 +68,7 @@ export const resolveActiveMember = (
       }
     }
     // 4. Exact user id match
-    if (m.id === currentUser.id) {
+    if (m.id === currentUser.id || m.memberId === currentUser.id) {
       return true;
     }
     return false;
@@ -72,24 +76,18 @@ export const resolveActiveMember = (
 
   if (matched) return matched;
 
-  // Fallback: If current user is in MEMBER mode but doesn't match specific member (e.g. admin switched to member mode)
-  // pick the first available member in database instead of an empty dummy!
-  if (availableMembers.length > 0) {
-    return availableMembers[0];
-  }
-
-  // Ultimate fallback
+  // Ultimate fallback based directly on current logged in user (do NOT return arbitrary member[0])
   return {
     id: currentUser.id || 'usr-member-default',
     memberId: currentUser.memberId || 'JCT-001',
-    name: currentUser.name || 'ওয়াহিদ শাকিল আলমি',
-    banglaName: currentUser.banglaName || currentUser.name || 'ওয়াহিদ শাকিল আলমি',
-    email: currentUser.email || 'wahid.shakil@gmail.com',
-    phone: currentUser.phone || '০৭১১-১০০০০১',
+    name: currentUser.name || 'সদস্য',
+    banglaName: currentUser.banglaName || currentUser.name || 'সদস্য',
+    email: currentUser.email || 'info@japancitytower.com',
+    phone: currentUser.phone || '',
     memberType: 'FLAT_OWNER',
     memberTypeBangla: 'ফ্ল্যাট মালিক',
     flatUnitNumbers: currentUser.flatUnits || ['2-A'],
-    totalUnits: 1,
+    totalUnits: (currentUser.flatUnits || ['2-A']).length,
     status: 'ACTIVE'
   };
 };
@@ -110,7 +108,7 @@ export const resolveMemberFlats = (
   ].map(normalizeIdentifier);
 
   const activeMemberIdNorm = normalizeIdentifier(activeMember.memberId);
-  const activePhoneNorm = normalizePhone(activeMember.phone);
+  const activePhoneNorm = normalizePhone(activeMember.phone || currentUser.phone);
 
   const matchedFlats = availableFlats.filter((f) => {
     const flatUnitNorm = normalizeIdentifier(f.unitNumber);
@@ -133,7 +131,7 @@ export const resolveMemberFlats = (
     : (currentUser.flatUnits?.length ? currentUser.flatUnits : ['2-A']);
 
   return fallbackUnits.map((unitStr) => {
-    const existingSample = sampleUnits.find(u => normalizeIdentifier(u.unitNumber) === normalizeIdentifier(unitStr));
+    const existingSample = availableFlats.find(u => normalizeIdentifier(u.unitNumber) === normalizeIdentifier(unitStr));
     if (existingSample) return existingSample;
 
     const floorMatch = unitStr.match(/^(\d+)/);
@@ -144,11 +142,11 @@ export const resolveMemberFlats = (
       unitNumber: unitStr,
       floor: floorNum,
       unitType: 'Residential',
-      ownerName: activeMember.name,
-      ownerPhone: activeMember.phone || '',
-      memberId: activeMember.memberId || 'JCT-001',
+      ownerName: activeMember.name || currentUser.name || 'ফ্ল্যাট মালিক',
+      ownerPhone: activeMember.phone || currentUser.phone || '',
+      memberId: activeMember.memberId || currentUser.memberId || 'JCT-001',
       status: 'OCCUPIED_OWNER',
-      monthlyBaseBill: 1997,
+      monthlyBaseBill: 0,
       currentPaid: 0,
       currentDue: 0,
       paymentStatus: 'DUE'
@@ -164,7 +162,8 @@ export const calculateMemberBillSummary = (
   memberFlats: FlatUnit[],
   payments: PaymentRecord[],
   expenses: ExpenseItem[],
-  totalBuildingFlats: number = 28
+  totalBuildingFlats: number = 28,
+  currentPeriodId?: string
 ): MemberBillSummary => {
   const isKh = isKhalilurMember(activeMember.memberId);
   const dualCalc = calculateDualBilling(expenses, (totalBuildingFlats !== undefined && totalBuildingFlats !== null) ? totalBuildingFlats : 28);
@@ -188,7 +187,11 @@ export const calculateMemberBillSummary = (
     }
   }
 
-  const totalPaid = payments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+  const periodPayments = currentPeriodId 
+    ? payments.filter(p => (p.billingPeriodId || p.month) === currentPeriodId)
+    : payments;
+
+  const totalPaid = periodPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
   const totalDue = Math.max(0, totalBill - totalPaid);
 
   return {

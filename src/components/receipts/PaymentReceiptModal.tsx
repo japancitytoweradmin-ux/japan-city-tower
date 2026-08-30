@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Printer, 
   Download, 
@@ -9,13 +9,16 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
-import { PaymentRecord } from '../../types';
+import { PaymentRecord, BuildingInfoSettings, Member, FlatUnit } from '../../types';
 import { formatTaka } from '../../utils/formatters';
 import { useToast } from '../common/Toast';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { whatsappService } from '../../services/whatsappService';
 import { smsService } from '../../services/smsService';
 import { templateService } from '../../services/templateService';
+import { buildingSettingsService, DEFAULT_BUILDING_INFO } from '../../services/buildingSettingsService';
+import { memberService } from '../../services/memberService';
+import { flatService } from '../../services/flatService';
 
 interface PaymentReceiptModalProps {
   isOpen: boolean;
@@ -30,10 +33,54 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
 }) => {
   const { showToast } = useToast();
   const { language } = useLanguage();
+  const [buildingInfo, setBuildingInfo] = useState<BuildingInfoSettings>(DEFAULT_BUILDING_INFO);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [flats, setFlats] = useState<FlatUnit[]>([]);
+
+  useEffect(() => {
+    const unsub = buildingSettingsService.subscribeToBuildingInfo((info) => {
+      setBuildingInfo(info);
+    });
+    const unsubMem = memberService.subscribeToMembers((mList) => {
+      setMembers(mList);
+    });
+    const unsubFlat = flatService.subscribeToFlats((fList) => {
+      setFlats(fList);
+    });
+    return () => {
+      unsub();
+      unsubMem();
+      unsubFlat();
+    };
+  }, []);
 
   if (!payment) return null;
 
   const isBn = language === 'bn';
+
+  // Resolve recipient phone number
+  const resolveRecipientPhone = (): string => {
+    // 1. Direct phone on payment if available
+    const directPhone = (payment as any).memberPhone || (payment as any).phone;
+    if (directPhone && directPhone.trim().length > 5) {
+      return directPhone.trim();
+    }
+    // 2. Lookup in members list by memberId
+    if (payment.memberId) {
+      const matchMember = members.find(m => m.memberId === payment.memberId || m.id === payment.memberId);
+      if (matchMember && matchMember.phone) {
+        return matchMember.phone.trim();
+      }
+    }
+    // 3. Lookup in flats list by unitNumber
+    if (payment.flatUnitNumber) {
+      const matchFlat = flats.find(f => f.unitNumber === payment.flatUnitNumber);
+      if (matchFlat && matchFlat.ownerPhone) {
+        return matchFlat.ownerPhone.trim();
+      }
+    }
+    return '';
+  };
 
   const handlePrint = () => {
     window.print();
@@ -50,6 +97,17 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
   };
 
   const handleWhatsAppShare = async () => {
+    const phone = resolveRecipientPhone();
+    if (!phone) {
+      showToast(
+        isBn 
+          ? `সদস্য ${payment.memberName}-এর কোনো মোবাইল নম্বর পাওয়া যায়নি। সদস্য প্রোফাইলে নম্বর যোগ করুন।` 
+          : `No phone number found for ${payment.memberName}. Please update member profile.`,
+        'error'
+      );
+      return;
+    }
+
     const message = whatsappService.generateReceiptMessage({
       receiptNumber: payment.receiptNumber,
       memberName: payment.memberName,
@@ -62,7 +120,6 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
       paymentDate: payment.paymentDate,
     });
 
-    const phone = '01711123456';
     const { url } = await whatsappService.sendWhatsAppMessage({
       recipientMobile: phone,
       recipientName: payment.memberName,
@@ -78,13 +135,24 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
     window.open(url, '_blank');
     showToast(
       isBn 
-        ? `${payment.memberName}-এর WhatsApp চ্যাটে মানি রসিদ পাঠানো হয়েছে` 
-        : `Money receipt shared to WhatsApp for ${payment.memberName}`, 
+        ? `${payment.memberName} (${phone})-এর WhatsApp চ্যাটে মানি রসিদ পাঠানো হয়েছে` 
+        : `Money receipt shared to WhatsApp for ${payment.memberName} (${phone})`, 
       'success'
     );
   };
 
   const handleSmsShare = async () => {
+    const phone = resolveRecipientPhone();
+    if (!phone) {
+      showToast(
+        isBn 
+          ? `সদস্য ${payment.memberName}-এর কোনো মোবাইল নম্বর পাওয়া যায়নি। সদস্য প্রোফাইলে নম্বর যোগ করুন।` 
+          : `No phone number found for ${payment.memberName}. Please update member profile.`,
+        'error'
+      );
+      return;
+    }
+
     const tmpl = await templateService.getTemplateByType('PAYMENT_CONFIRMATION');
     const message = templateService.replaceVariables(tmpl.body, {
       memberName: payment.memberName,
@@ -96,7 +164,6 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
       dueAmount: currentDue.toLocaleString('bn-BD'),
     });
 
-    const phone = '01711-123456';
     const result = await smsService.sendSms({
       recipientMobile: phone,
       recipientName: payment.memberName,
@@ -113,8 +180,8 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
     if (result.success) {
       showToast(
         isBn 
-          ? `মানি রসিদ SMS সফলভাবে প্রেরিত হয়েছে (${payment.memberName})` 
-          : `Money receipt SMS sent successfully to ${payment.memberName}`, 
+          ? `মানি রসিদ SMS সফলভাবে প্রেরিত হয়েছে (${payment.memberName} - ${phone})` 
+          : `Money receipt SMS sent successfully to ${payment.memberName} (${phone})`, 
         'success'
       );
     } else {
@@ -150,18 +217,30 @@ export const PaymentReceiptModal: React.FC<PaymentReceiptModalProps> = ({
           {/* Building Header */}
           <div className="text-center border-b pb-4 border-slate-200">
             <div className="flex items-center justify-center gap-2 mb-1">
-              <div className="p-2 bg-slate-900 text-amber-400 rounded-xl shadow-xs">
-                <Building2 className="w-6 h-6" />
-              </div>
+              {buildingInfo.logoUrl ? (
+                <img 
+                  src={buildingInfo.logoUrl} 
+                  alt="Logo" 
+                  className="w-8 h-8 object-contain rounded-lg border border-slate-200 p-0.5" 
+                />
+              ) : (
+                <div className="p-2 bg-slate-900 text-amber-400 rounded-xl shadow-xs">
+                  <Building2 className="w-6 h-6" />
+                </div>
+              )}
               <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                {isBn ? 'জাপান সিটি টাওয়ার' : 'Japan City Tower'}
+                {isBn ? (buildingInfo.buildingNameBangla || 'জাপান সিটি টাওয়ার') : (buildingInfo.buildingNameEnglish || 'Japan City Tower')}
               </h2>
             </div>
             <p className="text-xs text-slate-600 font-medium">
-              {isBn ? 'কমন বিল ও হিসাব ব্যবস্থাপনা পদ্ধতি' : 'Japan City Tower – Common Bill Management System'}
+              {isBn 
+                ? `${buildingInfo.buildingNameBangla || 'জাপান সিটি টাওয়ার'} – ফ্ল্যাট মালিক ও পরিচালনা কমিটি` 
+                : `${buildingInfo.buildingNameEnglish || 'Japan City Tower'} – Flat Owners & Management Committee`}
             </p>
             <p className="text-xs text-slate-500 mt-0.5">
-              {isBn ? 'প্লট #১/বি, রোড #৪, সেকশন #১০, মিরপুর, ঢাকা-১২১৬' : 'Plot #1/B, Road #4, Section #10, Mirpur, Dhaka-1216'}
+              {isBn 
+                ? (buildingInfo.addressBangla || buildingInfo.addressEnglish || 'প্লট নং ২৪/বি, রিং রোড, শ্যামলী, ঢাকা-১২০৭') 
+                : (buildingInfo.addressEnglish || buildingInfo.addressBangla || 'Plot # 24/B, Ring Road, Shyamoli, Dhaka-1207')}
             </p>
             <div className="inline-block mt-3 px-4 py-1 bg-slate-900 text-amber-300 text-xs font-extrabold rounded-full tracking-wider uppercase">
               {isBn ? 'মানি রসিদ / MONEY RECEIPT' : 'MONEY RECEIPT'}

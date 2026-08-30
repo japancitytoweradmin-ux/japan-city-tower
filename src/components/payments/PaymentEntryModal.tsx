@@ -11,14 +11,17 @@ import {
   FileText
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
-import { Member, FlatUnit, PaymentRecord, PaymentMethodType } from '../../types';
+import { Member, FlatUnit, PaymentRecord, PaymentMethodType, ExpenseItem, MonthlyBill } from '../../types';
 import { memberService } from '../../services/memberService';
 import { flatService } from '../../services/flatService';
 import { paymentService } from '../../services/paymentService';
+import { expenseService } from '../../services/expenseService';
+import { billService } from '../../services/billService';
 import { useBillingPeriod } from '../../contexts/BillingPeriodContext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useToast } from '../common/Toast';
-import { formatTaka } from '../../utils/formatters';
+import { formatTaka, toBanglaNumber } from '../../utils/formatters';
+import { calculateDualBilling, isKhalilurMember } from '../../utils/billingCalculator';
 
 interface PaymentEntryModalProps {
   isOpen: boolean;
@@ -41,6 +44,9 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
   // Data states
   const [members, setMembers] = useState<Member[]>([]);
   const [flats, setFlats] = useState<FlatUnit[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [monthlyBill, setMonthlyBill] = useState<MonthlyBill | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -49,9 +55,10 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
   const [selectedFlatUnit, setSelectedFlatUnit] = useState<string>('');
   const [billingYear, setBillingYear] = useState<number>(activeYear || 2026);
   const [billingMonth, setBillingMonth] = useState<number>(activeMonth || 8);
-  const [billAmount, setBillAmount] = useState<number>(1997);
+  const [billAmount, setBillAmount] = useState<number>(0);
   const [previousDue, setPreviousDue] = useState<number>(0);
-  const [paidAmountInput, setPaidAmountInput] = useState<string>('1997');
+  const [alreadyPaidAmount, setAlreadyPaidAmount] = useState<number>(0);
+  const [paidAmountInput, setPaidAmountInput] = useState<string>('0');
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('Cash');
   const [transactionRef, setTransactionRef] = useState<string>('');
@@ -60,6 +67,9 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
 
   // Error state
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Billing Period ID
+  const selectedPeriodId = `${billingYear}-${String(billingMonth).padStart(2, '0')}`;
 
   // Load members and flats
   useEffect(() => {
@@ -96,11 +106,36 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
     }
   }, [isOpen, initialFlatUnit]);
 
-  // Sync year and month with selected period
+  // Sync year and month with selected period on open
   useEffect(() => {
-    if (activeYear) setBillingYear(activeYear);
-    if (activeMonth) setBillingMonth(activeMonth);
-  }, [activeYear, activeMonth]);
+    if (isOpen) {
+      if (activeYear) setBillingYear(activeYear);
+      if (activeMonth) setBillingMonth(activeMonth);
+    }
+  }, [isOpen, activeYear, activeMonth]);
+
+  // Subscribe to expenses, bills, and payments for the selected billing period
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const unsubExp = expenseService.subscribeToExpenses((list) => {
+      setExpenses(list);
+    }, selectedPeriodId);
+
+    const unsubPay = paymentService.subscribeToPayments((list) => {
+      setPayments(list);
+    }, selectedPeriodId);
+
+    const unsubBills = billService.subscribeToBills((bList) => {
+      setMonthlyBill(bList.length > 0 ? bList[0] : null);
+    }, selectedPeriodId);
+
+    return () => {
+      unsubExp();
+      unsubPay();
+      unsubBills();
+    };
+  }, [isOpen, selectedPeriodId]);
 
   // When Member changes, update available flats
   const handleMemberChange = (memberId: string) => {
@@ -120,19 +155,61 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
     }
   };
 
-  // When Flat changes, update previous due and base bill
+  // Helper calculation for dynamic flat bills in current period
+  const isMasterCleared = typeof window !== 'undefined' && localStorage.getItem('jct_master_cleared') === 'true';
+  const totalFlatsCount = isMasterCleared ? flats.length : (flats.length || 28);
+  const dualCalc = calculateDualBilling(expenses, totalFlatsCount);
+
+  const getDynamicBillForFlat = (unitNum: string, memberId?: string): number => {
+    const isKh = isKhalilurMember(memberId, unitNum);
+    if (monthlyBill && monthlyBill.finalPerFlatAmount > 0) {
+      return isKh 
+        ? (monthlyBill.khalilurPerFlatAmount || dualCalc.khalilur.perFlatBill || 0)
+        : (monthlyBill.finalPerFlatAmount || dualCalc.regularRoundedPerFlat || 0);
+    }
+    if (dualCalc.totalExpense > 0) {
+      return isKh ? dualCalc.khalilur.perFlatBill : dualCalc.regularRoundedPerFlat;
+    }
+    const matchedFlat = flats.find(f => f.unitNumber === unitNum);
+    return (matchedFlat && matchedFlat.monthlyBaseBill && matchedFlat.monthlyBaseBill !== 1997) 
+      ? matchedFlat.monthlyBaseBill 
+      : 0;
+  };
+
+  // When selectedFlatUnit, selectedMemberId, expenses, or monthlyBill change, calculate REAL bill & dues
   useEffect(() => {
     if (selectedFlatUnit) {
       const matchFlat = flats.find(f => f.unitNumber === selectedFlatUnit);
-      if (matchFlat) {
-        setBillAmount(matchFlat.monthlyBaseBill || 1997);
-        setPreviousDue(matchFlat.currentDue || 0);
+      const calculatedBill = getDynamicBillForFlat(selectedFlatUnit, selectedMemberId || matchFlat?.memberId);
+      
+      // Calculate already paid amount in this period for this flat
+      const alreadyPaidInPeriod = payments
+        .filter(p => (p.billingPeriodId === selectedPeriodId || p.month === selectedPeriodId) && p.flatUnitNumber === selectedFlatUnit && !p.isDeleted)
+        .reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+
+      const prevDue = matchFlat?.currentDue || 0;
+      const currentMonthDue = Math.max(0, calculatedBill - alreadyPaidInPeriod);
+      const totalDueToSettle = currentMonthDue + prevDue;
+
+      setBillAmount(calculatedBill);
+      setPreviousDue(prevDue);
+      setAlreadyPaidAmount(alreadyPaidInPeriod);
+
+      // Default paid amount to the remaining payable for this month (or full due if already partially paid)
+      if (currentMonthDue > 0) {
+        setPaidAmountInput(String(currentMonthDue));
+      } else if (totalDueToSettle > 0) {
+        setPaidAmountInput(String(totalDueToSettle));
       } else {
-        setBillAmount(1997);
-        setPreviousDue(0);
+        setPaidAmountInput(calculatedBill > 0 && alreadyPaidInPeriod >= calculatedBill ? '0' : String(calculatedBill));
       }
+    } else {
+      setBillAmount(0);
+      setPreviousDue(0);
+      setAlreadyPaidAmount(0);
+      setPaidAmountInput('0');
     }
-  }, [selectedFlatUnit, flats]);
+  }, [selectedFlatUnit, selectedMemberId, expenses, monthlyBill, payments, flats, selectedPeriodId]);
 
   // Filter flats for selected member
   const selectedMember = members.find(m => m.memberId === selectedMemberId);
@@ -146,13 +223,15 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
 
   // Numbers parsing & Auto calculation
   const parsedPaid = parseFloat(paidAmountInput) || 0;
-  const totalPayable = billAmount + previousDue;
+  // Effective current month remaining before this payment
+  const currentMonthRemainingBefore = Math.max(0, billAmount - alreadyPaidAmount);
+  const totalPayable = currentMonthRemainingBefore + previousDue;
   const currentDue = Math.max(0, totalPayable - parsedPaid);
 
   let statusTag: 'PAID' | 'PARTIAL' | 'DUE' = 'DUE';
-  if (currentDue === 0 && (parsedPaid > 0 || totalPayable === 0)) {
+  if (currentDue === 0 && (parsedPaid > 0 || (billAmount > 0 && alreadyPaidAmount >= billAmount) || totalPayable === 0)) {
     statusTag = 'PAID';
-  } else if (parsedPaid > 0 && currentDue > 0) {
+  } else if ((parsedPaid > 0 || alreadyPaidAmount > 0) && currentDue > 0) {
     statusTag = 'PARTIAL';
   } else {
     statusTag = 'DUE';
@@ -165,8 +244,8 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
     
     if (val !== '' && amount < 0) {
       setErrorMessage(isBn ? 'টাকার পরিমাণ সঠিক নয়।' : 'Invalid payment amount.');
-    } else if (amount > totalPayable) {
-      setErrorMessage(isBn ? 'পেমেন্টের পরিমাণ বিলের চেয়ে বেশি।' : 'Payment amount exceeds the bill.');
+    } else if (amount > totalPayable && totalPayable > 0) {
+      setErrorMessage(isBn ? 'পেমেন্টের পরিমাণ মোট পাওনার চেয়ে বেশি।' : 'Payment amount exceeds total payable.');
     } else {
       setErrorMessage(null);
     }
@@ -184,13 +263,13 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
       return;
     }
 
-    if (parsedPaid < 0) {
-      setErrorMessage(isBn ? 'টাকার পরিমাণ সঠিক নয়।' : 'Invalid payment amount.');
+    if (parsedPaid <= 0) {
+      setErrorMessage(isBn ? 'অনুগ্রহ করে সঠিক জমার পরিমাণ লিখুন।' : 'Please enter a valid paid amount.');
       return;
     }
 
-    if (parsedPaid > totalPayable) {
-      setErrorMessage(isBn ? 'পেমেন্টের পরিমাণ বিলের চেয়ে বেশি।' : 'Payment amount exceeds the bill.');
+    if (parsedPaid > totalPayable && totalPayable > 0) {
+      setErrorMessage(isBn ? 'পেমেন্টের পরিমাণ মোট পাওনার চেয়ে বেশি।' : 'Payment amount exceeds total payable.');
       return;
     }
 
@@ -198,7 +277,7 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
     setErrorMessage(null);
 
     try {
-      const billingPeriodId = `${billingYear}-${String(billingMonth).padStart(2, '0')}`;
+      const billingPeriodId = selectedPeriodId;
       
       const createdPayment = await paymentService.addPayment({
         memberId: selectedMemberId,
@@ -218,7 +297,7 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
         paymentDate,
         paymentMethod,
         transactionRef,
-        remarks,
+        remarks: remarks || (isBn ? `${billingPeriodId} মাসের বিল পরিশোধ` : `Bill payment for ${billingPeriodId}`),
         notes: remarks,
         collectedBy: collectedBy || 'Admin',
         status: statusTag
@@ -296,11 +375,14 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
               required
             >
               <option value="">{isBn ? '-- ফ্ল্যাট নির্বাচন করুন --' : '-- Select Flat Unit --'}</option>
-              {memberFlats.map((f) => (
-                <option key={f.unitNumber} value={f.unitNumber}>
-                  {isBn ? `ফ্ল্যাট ${f.unitNumber}` : `Unit ${f.unitNumber}`} (বিল: ৳{f.monthlyBaseBill || 1997})
-                </option>
-              ))}
+              {memberFlats.map((f) => {
+                const dynamicBill = getDynamicBillForFlat(f.unitNumber, selectedMemberId || f.memberId);
+                return (
+                  <option key={f.unitNumber} value={f.unitNumber}>
+                    {isBn ? `ফ্ল্যাট ${f.unitNumber}` : `Unit ${f.unitNumber}`} {dynamicBill > 0 ? `(বিল: ৳${dynamicBill})` : ''}
+                  </option>
+                );
+              })}
             </select>
             {selectedMember && selectedMember.flatUnitNumbers && selectedMember.flatUnitNumbers.length > 1 && (
               <p className="text-[11px] text-amber-700 font-medium mt-1">
@@ -391,6 +473,11 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
             <div>
               <span className="text-slate-400 block text-[11px]">{isBn ? 'বর্তমান মাসের বিল:' : 'Current Bill:'}</span>
               <p className="text-base font-extrabold text-white">{formatTaka(billAmount)}</p>
+              {alreadyPaidAmount > 0 && (
+                <span className="text-[10px] text-emerald-400 font-semibold block mt-0.5">
+                  ({isBn ? `পরিশোধিত: ৳${alreadyPaidAmount}` : `Paid: ৳${alreadyPaidAmount}`})
+                </span>
+              )}
             </div>
             <div>
               <span className="text-slate-400 block text-[11px]">{isBn ? 'পূর্বের বকেয়া:' : 'Previous Due:'}</span>
@@ -421,7 +508,7 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
                 type="number"
                 value={paidAmountInput}
                 onChange={(e) => handlePaidAmountChange(e.target.value)}
-                placeholder="1997"
+                placeholder="0"
                 className={`w-full pl-8 pr-3 py-2 bg-white border rounded-xl font-bold text-base focus:outline-hidden focus:ring-2 ${
                   errorMessage ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-300 focus:ring-emerald-500'
                 }`}
@@ -486,7 +573,7 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
             type="text"
             value={remarks}
             onChange={(e) => setRemarks(e.target.value)}
-            placeholder={isBn ? "e.g. আগস্ট মাসের কমন বিল পরিশোধ" : "e.g. August bill payment"}
+            placeholder={isBn ? `${billingMonth} নং মাসের কমন বিল পরিশোধ` : `Bill payment for period ${selectedPeriodId}`}
             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium"
           />
         </div>
@@ -524,3 +611,4 @@ export const PaymentEntryModal: React.FC<PaymentEntryModalProps> = ({
     </Modal>
   );
 };
+

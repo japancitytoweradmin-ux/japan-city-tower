@@ -89,6 +89,7 @@ export interface MonthlyBill {
   totalExpense: number;
   totalFlats: number;
   perFlatAmount: number;
+  khalilurPerFlatAmount?: number;
   adjustment?: number;
   customAdjustment?: number;
   finalPerFlatAmount?: number;
@@ -165,6 +166,9 @@ export interface Member {
   totalBill?: number;
   totalPaid?: number;
   totalDue?: number;
+  computedBill?: number;
+  computedPaid?: number;
+  computedDue?: number;
   status: 'ACTIVE' | 'INACTIVE';
   joinedDate?: string;
   avatarUrl?: string;
@@ -566,11 +570,35 @@ export interface MessageTemplate {
   updatedAt?: string;
 }
 
+export interface IpWhiteListEntry {
+  id: string;
+  ip: string;
+  type: 'ALL' | 'API' | 'WEB';
+  note?: string;
+  createdAt: string;
+}
+
 export interface CommunicationSettings {
   smsEnabled: boolean;
   smsMaskingName: string;
   smsProviderName: string;
   smsBalance: number;
+  
+  // Custom API Gateway Settings (BulksmsBD / Any SMS Provider)
+  smsGatewayProvider?: 'BULKSMSBD' | 'GENERIC_HTTP' | 'GREENWEB' | 'TELETALK' | 'CUSTOM';
+  smsApiUrl?: string;
+  smsApiKey?: string;
+  smsSenderId?: string;
+  smsHttpMethod?: 'GET' | 'POST';
+  smsParamApiKey?: string;
+  smsParamSenderId?: string;
+  smsParamMobile?: string;
+  smsParamMessage?: string;
+
+  // IP Whitelisting Settings
+  ipWhiteListingEnabled?: boolean;
+  ipWhiteListEntries?: IpWhiteListEntry[];
+
   autoSendPaymentSms: boolean;
   autoSendBillPublishedSms: boolean;
   autoSendDueReminderSms: boolean;

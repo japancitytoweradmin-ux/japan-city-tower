@@ -29,7 +29,8 @@ import { billService } from '../../services/billService';
 import { expenseService } from '../../services/expenseService';
 import { flatService } from '../../services/flatService';
 import { paymentService } from '../../services/paymentService';
-import { MonthlyBill, FlatUnit, ExpenseItem, PaymentRecord } from '../../types';
+import { buildingSettingsService, DEFAULT_BUILDING_INFO } from '../../services/buildingSettingsService';
+import { MonthlyBill, FlatUnit, ExpenseItem, PaymentRecord, BuildingInfoSettings } from '../../types';
 import { calculateDualBilling, isKhalilurMember, KHALILUR_FLAT_UNITS } from '../../utils/billingCalculator';
 
 export const MonthlyBillsPage: React.FC = () => {
@@ -41,6 +42,7 @@ export const MonthlyBillsPage: React.FC = () => {
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [monthlyBill, setMonthlyBill] = useState<MonthlyBill | null>(null);
+  const [buildingInfo, setBuildingInfo] = useState<BuildingInfoSettings>(DEFAULT_BUILDING_INFO);
   const [isPublishing, setIsPublishing] = useState(false);
   const [customAdjustment, setCustomAdjustment] = useState<number>(0);
   const [activeCalculationTab, setActiveCalculationTab] = useState<'ALL' | 'GENERAL' | 'KHALILUR'>('ALL');
@@ -58,12 +60,14 @@ export const MonthlyBillsPage: React.FC = () => {
         setCustomAdjustment(0);
       }
     }, billingPeriodId);
+    const unsubBld = buildingSettingsService.subscribeToBuildingInfo((info) => setBuildingInfo(info));
 
     return () => {
       unsubFlats();
       unsubExp();
       unsubPay();
       unsubBills();
+      unsubBld();
     };
   }, [billingPeriodId]);
 
@@ -164,69 +168,72 @@ export const MonthlyBillsPage: React.FC = () => {
 
   return (
     <div className="space-y-6 font-bengali">
-      <PageHeader
-        title={t.bills.title}
-        subtitle={t.bills.subtitle}
-        actionButton={
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handlePrintSheet}
-              className="px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all"
-            >
-              <Printer className="w-4 h-4" />
-              {isBangla ? 'বিল বিবরণী প্রিন্ট' : 'Print Bill Sheet'}
-            </button>
-
-            {/* Bill Status Selector Actions */}
-            <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+      {/* Top Header & Action Controls - Hidden in Print */}
+      <div className="no-print print:hidden">
+        <PageHeader
+          title={t.bills.title}
+          subtitle={t.bills.subtitle}
+          actionButton={
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                disabled={isPublishing}
-                onClick={() => handleUpdateStatus('DRAFT')}
-                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all ${
-                  currentStatus === 'DRAFT'
-                    ? 'bg-amber-500 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
+                onClick={handlePrintSheet}
+                className="px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all"
               >
-                <span>খসড়া (DRAFT)</span>
+                <Printer className="w-4 h-4" />
+                {isBangla ? 'বিল বিবরণী প্রিন্ট' : 'Print Bill Sheet'}
               </button>
 
-              <button
-                type="button"
-                disabled={isPublishing}
-                onClick={() => handleUpdateStatus('PUBLISHED')}
-                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all ${
-                  currentStatus === 'PUBLISHED'
-                    ? 'bg-teal-500 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <FileCheck className="w-3.5 h-3.5" />
-                <span>প্রকাশিত (PUBLISHED)</span>
-              </button>
+              {/* Bill Status Selector Actions */}
+              <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                <button
+                  type="button"
+                  disabled={isPublishing}
+                  onClick={() => handleUpdateStatus('DRAFT')}
+                  className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all ${
+                    currentStatus === 'DRAFT'
+                      ? 'bg-amber-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span>খসড়া (DRAFT)</span>
+                </button>
 
-              <button
-                type="button"
-                disabled={isPublishing}
-                onClick={() => handleUpdateStatus('CLOSED')}
-                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all ${
-                  currentStatus === 'CLOSED'
-                    ? 'bg-slate-700 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>বন্ধ (CLOSED)</span>
-              </button>
+                <button
+                  type="button"
+                  disabled={isPublishing}
+                  onClick={() => handleUpdateStatus('PUBLISHED')}
+                  className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all ${
+                    currentStatus === 'PUBLISHED'
+                      ? 'bg-teal-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <FileCheck className="w-3.5 h-3.5" />
+                  <span>প্রকাশিত (PUBLISHED)</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isPublishing}
+                  onClick={() => handleUpdateStatus('CLOSED')}
+                  className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all ${
+                    currentStatus === 'CLOSED'
+                      ? 'bg-slate-700 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>বন্ধ (CLOSED)</span>
+                </button>
+              </div>
             </div>
-          </div>
-        }
-      />
+          }
+        />
+      </div>
 
-      {/* Month Formula Card */}
-      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-xl space-y-6">
+      {/* Month Formula Card - Hidden in Print */}
+      <div className="no-print print:hidden bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -417,8 +424,30 @@ export const MonthlyBillsPage: React.FC = () => {
       </div>
 
       {/* 28 Flats Bill Statement Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
-        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
+        
+        {/* Printable Letterhead for Monthly Bill Sheet */}
+        <div className="hidden print:block p-6 text-center border-b border-slate-300">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            {buildingInfo.logoUrl && (
+              <img src={buildingInfo.logoUrl} alt="Logo" className="w-8 h-8 object-contain" />
+            )}
+            <h2 className="text-2xl font-black text-slate-900">
+              {isBangla ? (buildingInfo.buildingNameBangla || 'জাপান সিটি টাওয়ার') : (buildingInfo.buildingNameEnglish || 'Japan City Tower')}
+            </h2>
+          </div>
+          <p className="text-xs text-slate-700 font-semibold">
+            {buildingInfo.buildingNameEnglish || 'Japan City Tower'} – Flat Owners & Management Committee
+          </p>
+          <p className="text-xs text-slate-600">
+            {isBangla ? (buildingInfo.addressBangla || buildingInfo.addressEnglish) : (buildingInfo.addressEnglish || buildingInfo.addressBangla)}
+          </p>
+          <div className="inline-block mt-2 px-3 py-1 bg-slate-100 border border-slate-300 text-slate-900 text-xs font-black rounded-full uppercase">
+            {isBangla ? `মাসিক কমন বিল ও সার্ভিস চার্জ বিবরণী (${periodLabel})` : `Monthly Bill Statement (${periodLabel})`}
+          </div>
+        </div>
+
+        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print print:hidden">
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <span>{periodLabel}: {isBangla ? 'ফ্ল্যাটভিত্তিক বিল বিবরণী' : 'Flat Statement'}</span>
@@ -473,7 +502,7 @@ export const MonthlyBillsPage: React.FC = () => {
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700">
+            <thead className="bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700 print:bg-slate-200 print:text-slate-900">
               <tr>
                 <th className="p-3.5">{isBangla ? 'ক্রমিক' : 'SL'}</th>
                 <th className="p-3.5">{t.flats.unitNumber}</th>
@@ -488,7 +517,7 @@ export const MonthlyBillsPage: React.FC = () => {
                 <th className="p-3.5 text-center">{t.common.status}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-300">
               {flats
                 .filter((unit) => {
                   const isKh = isKhalilurMember(unit.memberId, unit.unitNumber);
@@ -556,6 +585,29 @@ export const MonthlyBillsPage: React.FC = () => {
                 })}
             </tbody>
           </table>
+        </div>
+
+        {/* Print Signature Section */}
+        <div className="hidden print:grid grid-cols-2 gap-8 pt-12 pb-6 px-6 text-xs text-center border-t border-slate-300 mt-6">
+          <div className="space-y-1">
+            <div className="w-48 border-b-2 border-dashed border-slate-400 mx-auto mb-2"></div>
+            <p className="font-extrabold text-slate-900 text-sm">
+              {isBangla ? 'হিসাবরক্ষক / ম্যানেজার' : 'Accountant / Manager'}
+            </p>
+            <p className="text-xs text-slate-600 font-medium">
+              {buildingInfo.buildingNameEnglish || 'Japan City Tower'}
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <div className="w-48 border-b-2 border-dashed border-slate-400 mx-auto mb-2"></div>
+            <p className="font-extrabold text-slate-900 text-sm">
+              {isBangla ? 'সভাপতি / সাধারণ সম্পাদক' : 'President / General Secretary'}
+            </p>
+            <p className="text-xs text-slate-600 font-medium">
+              {isBangla ? 'ম্যানেজমেন্ট কমিটি' : 'Management Committee'}
+            </p>
+          </div>
         </div>
       </div>
     </div>

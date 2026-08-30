@@ -34,6 +34,7 @@ import { expenseService } from '../../services/expenseService';
 import { demoDataService } from '../../services/demoDataService';
 import { buildingSettingsService } from '../../services/buildingSettingsService';
 import { calculateDualBilling, isKhalilurMember } from '../../utils/billingCalculator';
+import { whatsappService } from '../../services/whatsappService';
 import { useToast } from '../../components/common/Toast';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { useBillingPeriod } from '../../contexts/BillingPeriodContext';
@@ -333,9 +334,23 @@ export const MembersPage: React.FC<MembersPageProps> = ({ onNavigateTab }) => {
     showToast(`${member.name} (${member.phone}) - SMS Draft Ready`, 'info');
   };
 
-  const handleSendWhatsApp = (member: Member) => {
+  const handleSendWhatsApp = async (member: Member) => {
+    if (!member.phone || member.phone.trim().length < 6) {
+      showToast(`${member.name}-এর কোনো বৈধ মোবাইল নম্বর নেই`, 'error');
+      return;
+    }
     const text = `আসসালামু আলাইকুম ${member.name}। জাপান সিটি টাওয়ার কমন বিল সংক্রান্ত আপডেট। আপনার ফ্ল্যাট: ${(member.flatUnitNumbers || []).join(', ')}`;
-    window.open(`https://wa.me/880${member.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`, '_blank');
+    const { url } = await whatsappService.sendWhatsAppMessage({
+      recipientMobile: member.phone,
+      recipientName: member.name,
+      message: text,
+      memberId: member.memberId,
+      flatNumber: (member.flatUnitNumbers || []).join(', '),
+      templateType: 'BILL_PUBLISHED',
+      sentBy: 'Admin',
+    });
+    window.open(url, '_blank');
+    showToast(`${member.name} (${member.phone})-এর WhatsApp চ্যাট খোলা হয়েছে`, 'success');
   };
 
   // Available flats not yet owned by this member

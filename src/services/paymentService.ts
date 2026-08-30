@@ -24,6 +24,8 @@ import { communicationSettingsService } from './communicationSettingsService';
 import { templateService } from './templateService';
 import { parseBillingPeriodId, getBillingPeriodId } from '../contexts/BillingPeriodContext';
 
+import { normalizeIdentifier } from '../utils/memberResolver';
+
 const PAYMENTS_COLLECTION = 'payments';
 
 export const paymentService = {
@@ -82,13 +84,13 @@ export const paymentService = {
       })) as PaymentRecord[];
 
       list = list.filter(p => !p.isDeleted);
-      const normMemberId = (memberId || '').trim().toUpperCase();
-      const normFlats = (flatUnits || []).map(f => f.trim().toUpperCase());
+      const normMemberId = normalizeIdentifier(memberId);
+      const normFlats = (flatUnits || []).map(normalizeIdentifier);
 
       list = list.filter(p => {
-        const pMemberId = (p.memberId || '').trim().toUpperCase();
-        const pFlat = (p.flatUnitNumber || p.flatId || '').trim().toUpperCase();
-        const matchMember = Boolean(normMemberId && pMemberId === normMemberId);
+        const pMemberId = normalizeIdentifier(p.memberId);
+        const pFlat = normalizeIdentifier(p.flatUnitNumber || p.flatId);
+        const matchMember = Boolean(normMemberId && pMemberId && (pMemberId === normMemberId || pMemberId.endsWith(normMemberId) || normMemberId.endsWith(pMemberId)));
         const matchFlat = Boolean(pFlat && normFlats.includes(pFlat));
         return matchMember || matchFlat;
       });
@@ -163,13 +165,13 @@ export const paymentService = {
 
             payments = payments.filter(p => !p.isDeleted);
 
-            const normMemberId = (memberId || '').trim().toUpperCase();
-            const normFlats = (flatUnits || []).map(f => f.trim().toUpperCase());
+            const normMemberId = normalizeIdentifier(memberId);
+            const normFlats = (flatUnits || []).map(normalizeIdentifier);
 
             payments = payments.filter(p => {
-              const pMemberId = (p.memberId || '').trim().toUpperCase();
-              const pFlat = (p.flatUnitNumber || p.flatId || '').trim().toUpperCase();
-              const matchMember = Boolean(normMemberId && pMemberId === normMemberId);
+              const pMemberId = normalizeIdentifier(p.memberId);
+              const pFlat = normalizeIdentifier(p.flatUnitNumber || p.flatId);
+              const matchMember = Boolean(normMemberId && pMemberId && (pMemberId === normMemberId || pMemberId.endsWith(normMemberId) || normMemberId.endsWith(pMemberId)));
               const matchFlat = Boolean(pFlat && normFlats.includes(pFlat));
               return matchMember || matchFlat;
             });
