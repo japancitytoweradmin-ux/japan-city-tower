@@ -153,7 +153,7 @@ export const MemberFlatsPage: React.FC<MemberFlatsPageProps> = ({
           const flatPaid = payments
             .filter((p) => p.flatUnitNumber === flat.unitNumber)
             .reduce((sum, p) => sum + p.paidAmount, 0);
-          const flatBill = isKh ? dualCalc.khalilur.perFlatBill : (flat.monthlyBaseBill || dualCalc.regularRoundedPerFlat);
+          const flatBill = isKh ? dualCalc.khalilur.perFlatBill : perFlatBill;
           const flatDue = Math.max(0, flatBill - flatPaid);
           const flatStatus = flatDue === 0 ? 'PAID' : (flatPaid > 0 ? 'PARTIAL' : 'DUE');
 

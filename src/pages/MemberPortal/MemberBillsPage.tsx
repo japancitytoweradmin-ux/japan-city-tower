@@ -221,7 +221,7 @@ export const MemberBillsPage: React.FC<MemberBillsPageProps> = ({
             const flatPaid = payments
               .filter(p => p.flatUnitNumber === flat.unitNumber)
               .reduce((sum, p) => sum + p.paidAmount, 0);
-            const flatBill = isKh ? dualCalc.khalilur.perFlatBill : (flat.monthlyBaseBill || dualCalc.regularRoundedPerFlat);
+            const flatBill = isKh ? dualCalc.khalilur.perFlatBill : perFlatBill;
             const flatDue = Math.max(0, flatBill - flatPaid);
 
             return (
@@ -353,17 +353,17 @@ export const MemberBillsPage: React.FC<MemberBillsPageProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs">
           <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700">
             <span className="text-slate-400">{isBangla ? 'মাসিক মোট সাধারণ খরচ:' : 'Total Common Expense:'}</span>
-            <p className="text-base font-bold text-white font-mono mt-0.5">৳৫৫,৯১৬</p>
+            <p className="text-base font-bold text-white font-mono mt-0.5">{formatCurrency(dualCalc.totalExpense)}</p>
           </div>
 
           <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700">
             <span className="text-slate-400">{isBangla ? 'টাওয়ারের মোট ফ্ল্যাট সংখ্যা:' : 'Total Tower Units:'}</span>
-            <p className="text-base font-bold text-amber-400 font-mono mt-0.5">২৮টি ফ্ল্যাট</p>
+            <p className="text-base font-bold text-amber-400 font-mono mt-0.5">{formatNumber(dualCalc.totalFlats)}টি ফ্ল্যাট</p>
           </div>
 
           <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700">
             <span className="text-slate-400">{isBangla ? 'ফ্ল্যাটপ্রতি মাসিক বিল (রাউন্ডেড):' : 'Bill per Flat (Rounded):'}</span>
-            <p className="text-base font-bold text-emerald-400 font-mono mt-0.5">৳১,৯৯৭ / ফ্ল্যাট</p>
+            <p className="text-base font-bold text-emerald-400 font-mono mt-0.5">{formatCurrency(dualCalc.regularRoundedPerFlat)} / {isBangla ? 'ফ্ল্যাট' : 'flat'}</p>
           </div>
         </div>
       </div>

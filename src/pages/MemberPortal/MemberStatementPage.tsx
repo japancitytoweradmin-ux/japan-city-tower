@@ -83,13 +83,13 @@ export const MemberStatementPage: React.FC<MemberStatementPageProps> = ({
   );
 
   // Build statement entries for member's flats
-  const baseRate = perFlatBill || 1997;
+  const baseRate = perFlatBill;
   const filteredFlats = selectedFlat === 'ALL' ? memberFlats : memberFlats.filter(f => f.unitNumber === selectedFlat);
 
   // Group payments by flat and calculate total demand vs paid
   const totalBilled = selectedFlat === 'ALL'
-    ? (isKh ? dualCalc.khalilur.totalBill : filteredFlats.reduce((sum, f) => sum + (f.monthlyBaseBill || baseRate), 0))
-    : (isKh ? dualCalc.khalilur.perFlatBill : filteredFlats.reduce((sum, f) => sum + (f.monthlyBaseBill || baseRate), 0));
+    ? (isKh ? dualCalc.khalilur.totalBill : filteredFlats.length * perFlatBill)
+    : (isKh ? dualCalc.khalilur.perFlatBill : perFlatBill);
 
   const totalPaid = payments
     .filter(p => selectedFlat === 'ALL' || p.flatUnitNumber === selectedFlat)
@@ -234,7 +234,7 @@ export const MemberStatementPage: React.FC<MemberStatementPageProps> = ({
                 const flatPaid = payments
                   .filter(p => p.flatUnitNumber === flat.unitNumber)
                   .reduce((sum, p) => sum + p.paidAmount, 0);
-                const flatBill = flat.monthlyBaseBill || baseRate;
+                const flatBill = isKh ? dualCalc.khalilur.perFlatBill : perFlatBill;
                 const flatDue = Math.max(0, flatBill - flatPaid);
 
                 return (

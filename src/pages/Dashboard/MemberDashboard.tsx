@@ -409,28 +409,37 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300 font-medium">
-              {memberFlats.map((flat) => (
-                <tr key={flat.id || flat.unitNumber} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                  <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white font-mono text-sm">
-                    {flat.unitNumber}
-                  </td>
-                  <td className="py-3.5 px-4 text-slate-500">
-                    {formatNumber(flat.floor)} {isBangla ? 'ম তলা' : 'Floor'}
-                  </td>
-                  <td className="py-3.5 px-4 text-right font-mono">
-                    {formatCurrency(isKh ? dualCalc.khalilur.perFlatBill : (flat.monthlyBaseBill || dualCalc.regularRoundedPerFlat))}
-                  </td>
-                  <td className="py-3.5 px-4 text-right font-mono text-emerald-700 dark:text-emerald-400 font-bold">
-                    {formatCurrency(flat.currentPaid)}
-                  </td>
-                  <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
-                    {formatCurrency(flat.currentDue)}
-                  </td>
-                  <td className="py-3.5 px-4 text-center">
-                    <StatusBadge status={flat.paymentStatus || (totalDue === 0 ? 'PAID' : 'DUE')} size="sm" />
-                  </td>
-                </tr>
-              ))}
+              {memberFlats.map((flat) => {
+                const flatPaid = payments
+                  .filter(p => p.flatUnitNumber === flat.unitNumber)
+                  .reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+                const flatBill = isKh ? dualCalc.khalilur.perFlatBill : perFlatBill;
+                const flatDue = Math.max(0, flatBill - flatPaid);
+                const status = flatDue === 0 ? 'PAID' : (flatPaid > 0 ? 'PARTIAL' : 'DUE');
+
+                return (
+                  <tr key={flat.id || flat.unitNumber} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white font-mono text-sm">
+                      {flat.unitNumber}
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-500">
+                      {formatNumber(flat.floor)} {isBangla ? 'ম তলা' : 'Floor'}
+                    </td>
+                    <td className="py-3.5 px-4 text-right font-mono">
+                      {formatCurrency(flatBill)}
+                    </td>
+                    <td className="py-3.5 px-4 text-right font-mono text-emerald-700 dark:text-emerald-400 font-bold">
+                      {formatCurrency(flatPaid)}
+                    </td>
+                    <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
+                      {formatCurrency(flatDue)}
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <StatusBadge status={status} size="sm" />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot className="bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-bold border-t-2 border-slate-300 dark:border-slate-700">
               <tr>
