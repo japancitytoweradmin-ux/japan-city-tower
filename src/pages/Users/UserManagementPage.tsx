@@ -83,12 +83,26 @@ export const UserManagementPage: React.FC = () => {
   };
 
   const filteredUsers = users.filter((u) => {
+    if (!u) return false;
+    const s = (search || '').toLowerCase().trim();
+    if (!s) {
+      return roleFilter === 'ALL' || u.role === roleFilter;
+    }
+    const nameStr = (u.name || '').toLowerCase();
+    const banglaStr = (u.banglaName || '').toLowerCase();
+    const emailStr = (u.email || '').toLowerCase();
+    const phoneStr = (u.phone || (u as any).mobile || '').toLowerCase();
+    const memberIdStr = (u.memberId || '').toLowerCase();
+    const flatStr = (u.flatUnits || []).join(' ').toLowerCase();
+
     const matchesSearch = 
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
-      (u.banglaName && u.banglaName.toLowerCase().includes(search.toLowerCase())) ||
-      u.email.toLowerCase().includes(search.toLowerCase()) ||
-      (u.mobile || u.phone || '').includes(search) ||
-      (u.memberId || '').toLowerCase().includes(search.toLowerCase());
+      nameStr.includes(s) ||
+      banglaStr.includes(s) ||
+      emailStr.includes(s) ||
+      phoneStr.includes(s) ||
+      memberIdStr.includes(s) ||
+      flatStr.includes(s);
+
     const matchesRole = roleFilter === 'ALL' || u.role === roleFilter;
     return matchesSearch && matchesRole;
   });
@@ -107,6 +121,26 @@ export const UserManagementPage: React.FC = () => {
         return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">ভিউয়ার</span>;
     }
   };
+
+  const isUserAdmin = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || currentUser?.role === 'ACCOUNTANT';
+
+  if (!isUserAdmin) {
+    return (
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center max-w-xl mx-auto space-y-4 my-10 shadow-2xl">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+          <ShieldCheck className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-white">
+          {isBn ? 'সংরক্ষিত অ্যাডমিন এলাকা' : 'Admin Area Restricted'}
+        </h2>
+        <p className="text-sm text-slate-400 leading-relaxed">
+          {isBn 
+            ? 'ইউজার ও ভূমিকা ব্যবস্থাপনা শুধুমাত্র সিস্টেম অ্যাডমিন ও ম্যানেজমেন্ট কমিটির জন্য নির্ধারিত। আপনি সদস্য হিসেবে লগইন করেছেন।'
+            : 'User management is only available to system administrators and management committee. You are currently logged in as a member.'}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

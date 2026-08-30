@@ -165,21 +165,33 @@ export const Header: React.FC<HeaderProps> = ({
               className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200/80 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors"
               title={t.auth.switchRoleTitle}
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <ShieldCheck className={`w-3.5 h-3.5 ${currentUser.role === 'MEMBER' ? 'text-emerald-500' : 'text-amber-500'}`} />
               <span className="max-w-[90px] sm:max-w-[130px] truncate text-[11px] sm:text-xs">
-                {currentUser.role === 'ADMIN' ? t.auth.adminMode : t.auth.memberMode}
+                {currentUser.role === 'SUPER_ADMIN' 
+                  ? (isBangla ? 'সুপার অ্যাডমিন' : 'Super Admin')
+                  : currentUser.role === 'ADMIN'
+                    ? (isBangla ? 'অ্যাডমিন মোড' : 'Admin Mode')
+                    : currentUser.role === 'ACCOUNTANT'
+                      ? (isBangla ? 'হিসাবরক্ষক' : 'Accountant')
+                      : (isBangla ? 'সদস্য মোড' : 'Member Mode')}
               </span>
               <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>
 
             {showRoleDropdown && (
-              <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50 animate-in fade-in zoom-in-95">
+              <div className="absolute right-0 mt-2 w-72 max-h-96 overflow-y-auto bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50 animate-in fade-in zoom-in-95">
                 <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 text-xs">
                   <p className="font-bold text-slate-900 dark:text-white">{t.auth.switchRoleTitle}</p>
-                  <p className="text-[11px] text-slate-500">{t.auth.previewRoles}</p>
+                  <p className="text-[11px] text-slate-500">{isBangla ? 'সিস্টেম রোল ও সদস্য পোর্টাল প্রিভিউ' : 'Preview admin or member roles'}</p>
                 </div>
-                <div className="py-1 space-y-1">
-                  {allSelectableUsers.map((user) => (
+                
+                {/* Admin Accounts Category */}
+                <div className="pt-2 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3 h-3" />
+                  <span>{isBangla ? 'অ্যাডমিন ও কমিটি অ্যাকাউন্টস' : 'Admin & Committee'}</span>
+                </div>
+                <div className="py-0.5 space-y-0.5">
+                  {allSelectableUsers.filter(u => u.role !== 'MEMBER').map((user) => (
                     <button
                       key={user.id}
                       type="button"
@@ -187,22 +199,53 @@ export const Header: React.FC<HeaderProps> = ({
                         onSwitchUser(user);
                         setShowRoleDropdown(false);
                       }}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
+                      className={`w-full text-left px-3 py-1.5 rounded-xl text-xs flex items-center justify-between transition-colors ${
                         currentUser.id === user.id
-                          ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 font-bold'
+                          ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 font-bold border border-amber-300/30'
                           : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                       }`}
                     >
-                      <div>
-                        <p className="truncate font-semibold">{isBangla ? user.banglaName : user.name}</p>
-                        <p className="text-[10px] text-slate-500">
-                          {user.role === 'MEMBER' 
-                            ? `Units: ${user.flatUnits?.join(', ')}` 
-                            : (isBangla ? user.roleBangla : 'System Administrator')}
+                      <div className="min-w-0 pr-2">
+                        <p className="truncate font-semibold text-xs">{isBangla ? (user.banglaName || user.name) : user.name}</p>
+                        <p className="text-[10px] text-slate-500 truncate">
+                          {isBangla ? user.roleBangla : user.role}
                         </p>
                       </div>
                       {currentUser.id === user.id && (
-                        <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Flat Members Category */}
+                <div className="pt-3 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-emerald-500 flex items-center gap-1.5 border-t border-slate-100 dark:border-slate-800 mt-2">
+                  <Users className="w-3 h-3" />
+                  <span>{isBangla ? 'ফ্ল্যাট মালিক ও সদস্য অ্যাকাউন্টস (সদস্য পোর্টাল)' : 'Flat Members Portal'}</span>
+                </div>
+                <div className="py-0.5 space-y-0.5 max-h-48 overflow-y-auto">
+                  {allSelectableUsers.filter(u => u.role === 'MEMBER').map((user) => (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => {
+                        onSwitchUser(user);
+                        setShowRoleDropdown(false);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 rounded-xl text-xs flex items-center justify-between transition-colors ${
+                        currentUser.id === user.id
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-bold border border-emerald-300/30'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="min-w-0 pr-2">
+                        <p className="truncate font-semibold text-xs">{isBangla ? (user.banglaName || user.name) : user.name}</p>
+                        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium truncate">
+                          ফ্ল্যাট: {(user.flatUnits || []).join(', ') || '২-এ'} • {user.memberId || 'JCT'}
+                        </p>
+                      </div>
+                      {currentUser.id === user.id && (
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       )}
                     </button>
                   ))}

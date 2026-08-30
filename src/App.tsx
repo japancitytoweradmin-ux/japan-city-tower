@@ -73,6 +73,31 @@ function AppContent() {
   // Missing vouchers count
   const missingVouchersCount = 0;
 
+  const isAdminRole = userProfile?.role === 'SUPER_ADMIN' || userProfile?.role === 'ADMIN' || userProfile?.role === 'ACCOUNTANT' || userProfile?.role === 'VIEWER';
+  const isMemberRole = userProfile?.role === 'MEMBER';
+
+  const memberAllowedTabs: NavItemKey[] = [
+    'dashboard',
+    'member-flats',
+    'member-bills',
+    'member-payments',
+    'member-receipts',
+    'member-statement',
+    'notices',
+    'member-profile',
+  ];
+
+  // Auto-correct tab if role is Member but tab is Admin-only, or vice versa
+  useEffect(() => {
+    if (userProfile) {
+      if (isMemberRole && !memberAllowedTabs.includes(currentTab)) {
+        setCurrentTab('dashboard');
+      } else if (isAdminRole && currentTab.startsWith('member-')) {
+        setCurrentTab('dashboard');
+      }
+    }
+  }, [userProfile?.role, isMemberRole, isAdminRole]);
+
   const handleLogin = (user: UserProfile) => {
     setUserProfile(user);
     setCurrentTab('dashboard');
@@ -85,7 +110,8 @@ function AppContent() {
 
   const handleSwitchUser = (user: UserProfile) => {
     setUserProfile(user);
-    showToast(`ভূমিকা পরিবর্তিত: ${user.banglaName}`, 'info');
+    setCurrentTab('dashboard');
+    showToast(`ভূমিকা পরিবর্তিত: ${user.banglaName || user.name}`, 'info');
   };
 
   // Loading State with Bangla branding
@@ -111,8 +137,6 @@ function AppContent() {
   if (!userProfile) {
     return <LoginPage onLoginSuccess={handleLogin} />;
   }
-
-  const isAdminRole = userProfile.role === 'SUPER_ADMIN' || userProfile.role === 'ADMIN' || userProfile.role === 'ACCOUNTANT' || userProfile.role === 'VIEWER';
 
   return (
     <MainLayout

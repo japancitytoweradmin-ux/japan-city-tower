@@ -243,14 +243,7 @@ export const authService = {
       u => u.email.toLowerCase() === lowerEmail || (u.memberId && u.memberId.toUpperCase() === cleanId.toUpperCase())
     );
 
-    // Fast resolution for admin emails / presets
-    if (lowerEmail.includes('japancitytoweradmin') || lowerEmail === 'admin@japancitytower.com') {
-      const adminProfile = matchedPreset || DEMO_PRESET_USERS.SUPER_ADMIN;
-      auditService.logAction('LOGIN', 'AUTH', `অ্যাডমিন লগইন করেছেন: ${adminProfile.name}`, adminProfile.id, adminProfile.name).catch(() => {});
-      return adminProfile;
-    }
-
-    // Try Firebase Auth
+    // 1. First, check Firebase Authentication (Standard email & password)
     try {
       const userCredential = await signInWithEmailAndPassword(auth, emailToUse, password);
       const uid = userCredential.user.uid;
@@ -264,6 +257,20 @@ export const authService = {
         }
       } catch (dbErr) {
         console.warn('Firestore doc read notice:', dbErr);
+      }
+
+      // Check users collection by email if not found by uid
+      try {
+        const q = query(collection(db, 'users'), where('email', '==', emailToUse));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          const uDoc = qSnap.docs[0];
+          const profile = { id: uDoc.id, uid, ...uDoc.data() } as UserProfile;
+          auditService.logAction('LOGIN', 'AUTH', `অ্যাডমিন লগইন করেছেন: ${profile.name}`, uDoc.id, profile.name).catch(() => {});
+          return profile;
+        }
+      } catch (qErr) {
+        console.warn('Query users by email notice:', qErr);
       }
 
       if (matchedPreset) {
@@ -280,16 +287,38 @@ export const authService = {
         id: uid,
         uid,
         name: lowerEmail.includes('admin') ? 'Japan City Tower Admin' : emailToUse.split('@')[0],
-        banglaName: lowerEmail.includes('admin') ? 'জাপান সিটি টাওয়ার ম্যানেজমেন্ট অ্যাডমিন' : 'ব্যবহারকারী',
+        banglaName: lowerEmail.includes('admin') ? 'জাপান সিটি টাওয়ার ম্যানেজমেন্ট অ্যাডমিন' : 'অ্যাডমিন ইউজার',
         email: emailToUse,
         role: defaultRole,
-        roleBangla: defaultRole === 'SUPER_ADMIN' ? 'সুপার অ্যাডমিন' : defaultRole === 'ACCOUNTANT' ? 'হিসাবরক্ষক' : 'ফ্ল্যাট মালিক',
+        roleBangla: defaultRole === 'SUPER_ADMIN' ? 'সুপার অ্যাডমিন' : defaultRole === 'ACCOUNTANT' ? 'হিসাবরক্ষক' : 'অ্যাডমিন',
         phone: '০১৭০০-০০০০০১',
         status: 'ACTIVE',
         createdAt: new Date().toISOString()
       };
     } catch (authError: any) {
-      console.warn('Firebase Auth fallback:', authError?.message || authError);
+      console.warn('Firebase Auth notice (checking Firestore users collection):', authError?.message || authError);
+
+      // 2. Check if this admin user was added in Firestore 'users' collection
+      try {
+        const q = query(collection(db, 'users'), where('email', '==', emailToUse));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          const uDoc = qSnap.docs[0];
+          const data = uDoc.data();
+          const profile = { id: uDoc.id, ...data } as UserProfile;
+          auditService.logAction('LOGIN', 'AUTH', `অ্যাডমিন লগইন করেছেন: ${profile.name}`, uDoc.id, profile.name).catch(() => {});
+          return profile;
+        }
+      } catch (fsErr) {
+        console.warn('Firestore users collection direct query notice:', fsErr);
+      }
+
+      // Fast resolution for preset admin emails
+      if (lowerEmail.includes('japancitytoweradmin') || lowerEmail === 'admin@japancitytower.com') {
+        const adminProfile = matchedPreset || DEMO_PRESET_USERS.SUPER_ADMIN;
+        auditService.logAction('LOGIN', 'AUTH', `অ্যাডমিন লগইন করেছেন: ${adminProfile.name}`, adminProfile.id, adminProfile.name).catch(() => {});
+        return adminProfile;
+      }
 
       if (matchedPreset) {
         return matchedPreset;
@@ -310,14 +339,14 @@ export const authService = {
         };
       }
 
-      const defaultRole: UserRole = lowerEmail.includes('accountant') ? 'ACCOUNTANT' : 'MEMBER';
+      const defaultRole: UserRole = lowerEmail.includes('accountant') ? 'ACCOUNTANT' : 'ADMIN';
       return {
         id: `usr-${Date.now()}`,
         name: emailToUse.split('@')[0],
-        banglaName: 'ব্যবহারকারী',
+        banglaName: 'কমিটি সদস্য',
         email: emailToUse,
         role: defaultRole,
-        roleBangla: defaultRole === 'ACCOUNTANT' ? 'হিসাবরক্ষক' : 'ফ্ল্যাট মালিক',
+        roleBangla: defaultRole === 'ACCOUNTANT' ? 'হিসাবরক্ষক' : 'অ্যাডমিন',
         phone: '০১৭১১-০০০০০০',
         status: 'ACTIVE',
         createdAt: new Date().toISOString()

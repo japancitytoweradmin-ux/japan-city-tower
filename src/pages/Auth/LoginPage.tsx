@@ -249,6 +249,35 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 </button>
               </div>
 
+              {/* Fast Autofill for testing Member */}
+              <div className="pt-2 border-t border-slate-800">
+                <p className="text-[11px] text-slate-400 mb-2">⚡ দ্রুত সদস্য পরীক্ষা করুন:</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFlatOrMemberId('2-A');
+                      setMemberPhone('01711-123456');
+                    }}
+                    className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-[11px] text-left border border-slate-700/60 transition cursor-pointer"
+                  >
+                    <span className="font-bold text-amber-400 block">ফ্ল্যাট 2-A</span>
+                    <span className="text-slate-400 text-[10px]">ডাঃ শফিকুল ইসলাম</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFlatOrMemberId('6-B');
+                      setMemberPhone('01711-223344');
+                    }}
+                    className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-[11px] text-left border border-slate-700/60 transition cursor-pointer"
+                  >
+                    <span className="font-bold text-amber-400 block">ফ্ল্যাট 6-B</span>
+                    <span className="text-slate-400 text-[10px]">খলিলুর রহমান (৩ ফ্ল্যাট)</span>
+                  </button>
+                </div>
+              </div>
+
               <button
                 type="submit"
                 disabled={isLoading}
@@ -270,6 +299,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           ) : (
             /* ADMIN LOGIN FORM */
             <form onSubmit={handleAdminSubmit} className="space-y-4">
+              <div className="p-3 bg-amber-950/30 border border-amber-800/40 rounded-xl text-xs text-amber-200/90 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-amber-400">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>অ্যাডমিন ও কমিটি অ্যাক্সেস:</span>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  বিল্ডিং পরিচালনা, খরচ হিসাব, রসিদ প্রদান ও নোটিশ প্রেরণের জন্য অ্যাডমিন ইমেইল ও পাসওয়ার্ড প্রদান করুন।
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   অ্যাডমিন ইমেইল / ইউজার আইডি *
@@ -325,6 +364,35 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 >
                   Forgot Password?
                 </button>
+              </div>
+
+              {/* Fast Autofill for testing Admin */}
+              <div className="pt-2 border-t border-slate-800">
+                <p className="text-[11px] text-slate-400 mb-2">⚡ দ্রুত অ্যাডমিন লগইন নির্বাচন:</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminEmail('admin@japancitytower.com');
+                      setAdminPassword('admin123456');
+                    }}
+                    className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-[11px] text-left border border-slate-700/60 transition cursor-pointer"
+                  >
+                    <span className="font-bold text-amber-400 block">সুপার অ্যাডমিন</span>
+                    <span className="text-slate-400 text-[10px]">ম্যানেজমেন্ট কমিটি</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminEmail('accountant@japancitytower.com');
+                      setAdminPassword('admin123456');
+                    }}
+                    className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-[11px] text-left border border-slate-700/60 transition cursor-pointer"
+                  >
+                    <span className="font-bold text-sky-400 block">হিসাবরক্ষক</span>
+                    <span className="text-slate-400 text-[10px]">অ্যাকাউন্টস অফিসার</span>
+                  </button>
+                </div>
               </div>
 
               <button
